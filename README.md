@@ -7,19 +7,40 @@ Coworkers share Spotify playlists (max 11 songs each) and the songs get added to
 - Amplify Gen 2 (TypeScript) on AWS: AppSync data API over DynamoDB, Lambdas, SES, EventBridge.
 - Vite + React frontend hosted on Amplify Hosting at https://birmusicclub.com.
 - Public site reads the `Entry` model as a guest through the Cognito identity pool. Nobody signs in; the user pool is admin-create-only.
+- The only write path is the `submitPlaylist` mutation, handled by `amplify/submit-playlist/handler.ts`.
 
-## Secrets (SSM Parameter Store via Amplify)
+## Amplify console configuration
 
-Amplify Gen 2 `secret('NAME')` reads SSM Parameter Store at `/amplify/<appId>/<branch>/NAME`. Set these in the Amplify console under **Hosting > Secrets** (or `npx ampx sandbox secret set NAME` for a sandbox). They are only ever read by Lambdas, never shipped to the browser.
+All of these are read only by the submit Lambda, never shipped to the browser.
 
-| Secret                  | Value                                                            |
-| ----------------------- | ---------------------------------------------------------------- |
-| `SPOTIFY_CLIENT_ID`     | From the Spotify developer dashboard                             |
-| `SPOTIFY_CLIENT_SECRET` | From the Spotify developer dashboard                             |
-| `SPOTIFY_REFRESH_TOKEN` | Output of `npm run get-refresh-token`                            |
-| `SHARED_PASSWORD_HASH`  | bcrypt hash of the shared submit password (cost 10 is plenty)    |
+**Hosting > Secrets** (stored in SSM Parameter Store at `/amplify/<appId>/<branch>/<NAME>`):
 
-Non-secret config (`MASTER_PLAYLIST_ID`) goes in Amplify **Hosting > Environment variables** and is wired to the Lambda in Phase 2.
+| Secret                  | Value                                                     |
+| ----------------------- | --------------------------------------------------------- |
+| `SPOTIFY_CLIENT_ID`     | From the Spotify developer dashboard                      |
+| `SPOTIFY_CLIENT_SECRET` | From the Spotify developer dashboard                      |
+| `SPOTIFY_REFRESH_TOKEN` | Output of `npm run get-refresh-token`                     |
+| `SHARED_PASSWORD_HASH`  | bcrypt hash of the shared submit password (see below)     |
+
+**Hosting > Environment variables:**
+
+| Variable             | Value                                                                  |
+| -------------------- | ---------------------------------------------------------------------- |
+| `MASTER_PLAYLIST_ID` | The 22-character ID from the master playlist's Spotify link            |
+
+Generate the password hash locally (the password itself is never stored anywhere):
+
+```
+node -e "console.log(require('bcryptjs').hashSync(process.argv[1], 10))" 'the-shared-password'
+```
+
+## Submit flow
+
+1. Rate limit: 10 attempts per IP per hour, counted in a small DynamoDB table with TTL.
+2. Check the password against the bcrypt hash.
+3. Parse the playlist ID from the pasted link, refresh the Spotify access token, read the playlist.
+4. Reject if empty or over 11 songs. Spotify 429s are retried honouring Retry-After within a 20 second budget.
+5. Add the songs to the master playlist, then save the entry.
 
 ## Local commands
 

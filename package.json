@@ -9,7 +9,10 @@
     "get-refresh-token": "node scripts/get-refresh-token.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1156.0",
+    "@aws-sdk/lib-dynamodb": "^3.1156.0",
     "aws-amplify": "^6.22.2",
+    "bcryptjs": "^3.0.3",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },
