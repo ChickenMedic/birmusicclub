@@ -76,9 +76,18 @@ function CopyName() {
     }
   }
   return (
-    <button type="button" className="copy" onClick={copy} title="Copy to clipboard">
-      {SPOTIFY_OWNER_NAME}
-      <span className="copy-state">{copied ? 'Copied!' : 'Copy'}</span>
+    <button type="button" className={`copy${copied ? ' copied' : ''}`} onClick={copy}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        {copied ? (
+          <path d="M20 6 9 17l-5-5" />
+        ) : (
+          <>
+            <rect x="9" y="9" width="13" height="13" rx="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+          </>
+        )}
+      </svg>
+      {copied ? 'Copied to clipboard' : `Copy "${SPOTIFY_OWNER_NAME}"`}
     </button>
   );
 }
@@ -340,9 +349,12 @@ export default function App() {
             <strong>Make a playlist in Spotify</strong> with up to {MAX_TRACKS} songs.
           </li>
           <li>
-            <strong>Invite <CopyName /> to it.</strong> Open the playlist, tap the three dots, choose{' '}
+            <strong>Invite {SPOTIFY_OWNER_NAME} to it.</strong> Open the playlist, tap the three dots, choose{' '}
             <em>Invite collaborators</em>, and send the invite link to Sam. Spotify only lets this site read playlists
             it has been invited to. It is a one-time thing per playlist, and nobody else can edit yours.
+            <div className="copy-row">
+              <CopyName />
+            </div>
           </li>
           <li>
             <strong>Paste the link below.</strong> Tap <em>Share</em>, then <em>Copy link to playlist</em>.
