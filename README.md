@@ -29,7 +29,8 @@ The shared password from the original plan is not implemented yet (deferred by S
 ## Submit flow
 
 1. Rate limit: 10 attempts per IP per hour, counted in a small DynamoDB table with TTL.
-2. Parse the playlist ID from the pasted link, refresh the Spotify access token, read the playlist.
+2. Email is optional and only collected (and validated) when the digest box is ticked.
+3. Parse the playlist ID from the pasted link, refresh the Spotify access token, read the playlist.
 3. Reject if unreadable (not a collaborator), empty, or over 11 songs. Spotify 429s are retried honouring Retry-After within a 20 second budget.
 4. Add the songs to the master playlist, then save the entry.
 

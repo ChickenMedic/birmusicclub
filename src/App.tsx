@@ -62,7 +62,12 @@ export default function App() {
     setSubmitSuccess(null);
     setSubmitting(true);
     try {
-      const { data, errors } = await client.mutations.submitPlaylist({ name, email, playlistUrl, digestOptIn });
+      const { data, errors } = await client.mutations.submitPlaylist({
+        name,
+        email: digestOptIn ? email : undefined,
+        playlistUrl,
+        digestOptIn,
+      });
       if (!data) throw new Error(errors?.[0]?.message ?? 'Something went wrong. Try again.');
       setEntries((prev) => [data, ...(prev ?? [])]);
       setSubmitSuccess(`Added! Your ${data.trackCount} song${data.trackCount === 1 ? '' : 's'} are now in the master playlist.`);
@@ -99,14 +104,21 @@ export default function App() {
 
       <section className="card submit" id="submit">
         <h2>Add your playlist</h2>
+        <p className="lede">
+          Pick up to {MAX_TRACKS} songs. Your playlist gets its own card below, and the songs are added to the master
+          playlist automatically.
+        </p>
         <ol className="steps">
-          <li>In Spotify, make a playlist with up to {MAX_TRACKS} songs.</li>
           <li>
-            Open it, tap the three dots, choose <strong>Invite collaborators</strong>, and add{' '}
-            <strong>{SPOTIFY_OWNER_NAME}</strong>. Spotify only lets this site read playlists it has been invited to.
+            <strong>Make a playlist in Spotify</strong> with up to {MAX_TRACKS} songs.
           </li>
           <li>
-            Tap <strong>Share</strong>, <strong>Copy link to playlist</strong>, and paste it below.
+            <strong>Invite {SPOTIFY_OWNER_NAME} to it.</strong> Open the playlist, tap the three dots, choose{' '}
+            <em>Invite collaborators</em>, and send the invite link to Sam. Spotify only lets this site read playlists
+            it has been invited to. It is a one-time thing per playlist, and nobody else can edit yours.
+          </li>
+          <li>
+            <strong>Paste the link below.</strong> Tap <em>Share</em>, then <em>Copy link to playlist</em>.
           </li>
         </ol>
         <form onSubmit={onSubmit}>
@@ -116,24 +128,33 @@ export default function App() {
               <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} required autoComplete="name" />
             </label>
             <label>
-              Email
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
+              Playlist link
+              <input
+                value={playlistUrl}
+                onChange={(e) => setPlaylistUrl(e.target.value)}
+                placeholder="https://open.spotify.com/playlist/..."
+                required
+                inputMode="url"
+              />
             </label>
           </div>
-          <label>
-            Playlist link
-            <input
-              value={playlistUrl}
-              onChange={(e) => setPlaylistUrl(e.target.value)}
-              placeholder="https://open.spotify.com/playlist/..."
-              required
-              inputMode="url"
-            />
-          </label>
           <label className="check">
             <input type="checkbox" checked={digestOptIn} onChange={(e) => setDigestOptIn(e.target.checked)} />
-            Email me a weekly digest of new playlists
+            Email me on Mondays with what's new (optional)
           </label>
+          {digestOptIn && (
+            <label>
+              Email
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoComplete="email"
+                autoFocus
+              />
+            </label>
+          )}
           {submitError && (
             <p className="alert error" role="alert">
               {submitError}
@@ -147,6 +168,7 @@ export default function App() {
           <button type="submit" disabled={submitting}>
             {submitting ? 'Checking with Spotify…' : 'Add my playlist'}
           </button>
+          <p className="hint">Not working? Make sure Sam has accepted your invite first.</p>
         </form>
       </section>
 

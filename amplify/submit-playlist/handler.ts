@@ -23,11 +23,14 @@ export const handler: Schema['submitPlaylist']['functionHandler'] = async (event
 
   const { digestOptIn } = event.arguments;
   const name = event.arguments.name.trim();
-  const email = event.arguments.email.trim().toLowerCase();
+  // Email is only kept for people who want the weekly digest.
+  const email = digestOptIn ? (event.arguments.email ?? '').trim().toLowerCase() : undefined;
   const playlistId = parsePlaylistId(event.arguments.playlistUrl);
 
   if (name.length < 1 || name.length > 60) throw new Error('Please enter your name (up to 60 characters).');
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) throw new Error('Please enter a valid email address.');
+  if (digestOptIn && (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254)) {
+    throw new Error('Please enter a valid email address for the weekly digest, or untick the box.');
+  }
   if (!playlistId) throw new Error('That does not look like a Spotify playlist link. In Spotify use Share > Copy link to playlist.');
 
   const accessToken = await refreshSpotifyToken(env);
@@ -55,7 +58,7 @@ export const handler: Schema['submitPlaylist']['functionHandler'] = async (event
   await ddb.send(
     new PutCommand({
       TableName: env.ENTRY_TABLE_NAME,
-      Item: { ...entry, email, digestOptIn, createdAt: now, updatedAt: now, __typename: 'Entry' },
+      Item: { ...entry, ...(email ? { email } : {}), digestOptIn, createdAt: now, updatedAt: now, __typename: 'Entry' },
     }),
   );
   return entry;
@@ -134,7 +137,7 @@ async function fetchPlaylistItems(accessToken: string, playlistId: string): Prom
   });
   if (res.status === 403 || res.status === 404) {
     throw new Error(
-      `Spotify won't let this site read that playlist yet. In Spotify, open your playlist, tap the three dots, choose Invite collaborators, and add ${SPOTIFY_OWNER_NAME}. Then try again.`,
+      `Spotify won't let this site read that playlist yet. Open it in Spotify, tap the three dots, choose Invite collaborators, and send the invite link to ${SPOTIFY_OWNER_NAME}. Once accepted, try again.`,
     );
   }
   if (!res.ok) {

@@ -121,7 +121,20 @@ iframe {
 }
 
 .submit h2 {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
+}
+.lede {
+  margin: 0 0 14px;
+  color: var(--muted);
+}
+.hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.steps em {
+  font-style: normal;
+  color: var(--text);
 }
 .steps {
   margin: 0 0 20px;

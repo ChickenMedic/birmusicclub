@@ -35,7 +35,8 @@ const schema = a.schema({
     .mutation()
     .arguments({
       name: a.string().required(),
-      email: a.string().required(),
+      // Only collected when digestOptIn is true.
+      email: a.string(),
       playlistUrl: a.string().required(),
       digestOptIn: a.boolean().required(),
     })
