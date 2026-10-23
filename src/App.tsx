@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { generateClient } from 'aws-amplify/data';
 import type { Schema } from '../amplify/data/resource';
-import { MASTER_PLAYLIST_ID, MAX_TRACKS, SPOTIFY_OWNER_NAME } from '../config';
+import { FOUNDERS, FOUNDER_MAX_TRACKS, MASTER_PLAYLIST_ID, MAX_TRACKS, SPOTIFY_OWNER_NAME } from '../config';
 
 const client = generateClient<Schema>({ authMode: 'identityPool' });
 
@@ -372,7 +372,8 @@ export default function App() {
         </p>
         <ol className="steps">
           <li>
-            <strong>Make a playlist in Spotify</strong> with up to {MAX_TRACKS} songs.
+            <strong>Make a playlist in Spotify</strong> with up to {MAX_TRACKS} songs. Founders {FOUNDERS.join(' and ')} get{' '}
+            {FOUNDER_MAX_TRACKS}.
           </li>
           <li>
             <strong>Invite {SPOTIFY_OWNER_NAME} to it.</strong> Open the playlist, tap the three dots, choose{' '}

@@ -9,7 +9,7 @@ Coworkers share Spotify playlists (max 11 songs each) and the songs get added to
 - Public site reads the `Entry` model as a guest through the Cognito identity pool. Nobody signs in; the user pool is admin-create-only.
 - Entries are created by the `submitPlaylist` mutation (`amplify/submit-playlist/handler.ts`). It returns a per-entry `editToken` that the submitting browser keeps in localStorage.
 - `manageEntry` (`amplify/manage-entry/handler.ts`) renames, soft-deletes or restores an entry when given that token. Delete removes the entry's songs from the master playlist and restore adds them back, skipping any song another active entry also contributed. Deleted entries keep their record (`deletedAt`) so restore is trivial.
-- `config.ts` holds the master playlist ID and the Spotify account name; both the site and the Lambda import it.
+- `config.ts` holds the master playlist ID, the Spotify account name, the song limit and the founders list (who get one extra song, matched by the name typed into the form); both the site and the Lambdas import it.
 
 ## Spotify constraint
 

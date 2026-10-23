@@ -3,7 +3,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import type { Schema } from '../data/resource';
 import { addToMasterPlaylist, addableUris, fetchPlaylistItems, refreshSpotifyToken } from '../spotify';
-import { MAX_TRACKS } from '../../config';
+import { maxTracksFor } from '../../config';
 
 const RATE_LIMIT_PER_HOUR = 10;
 
@@ -32,8 +32,9 @@ export const handler: Schema['submitPlaylist']['functionHandler'] = async (event
   const accessToken = await refreshSpotifyToken();
   const items = await fetchPlaylistItems(accessToken, playlistId);
   if (items.total === 0) throw new Error('That playlist is empty.');
-  if (items.total > MAX_TRACKS) {
-    throw new Error(`That playlist has ${items.total} songs. The limit is ${MAX_TRACKS}. Trim it down and try again.`);
+  const limit = maxTracksFor(name);
+  if (items.total > limit) {
+    throw new Error(`That playlist has ${items.total} songs. The limit is ${limit}. Trim it down and try again.`);
   }
   const uris = addableUris(items);
   if (uris.length === 0) throw new Error('Those songs are local files, which Spotify cannot add to another playlist.');
