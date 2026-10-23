@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import type { Schema } from '../data/resource';
@@ -47,6 +47,7 @@ export const handler: Schema['submitPlaylist']['functionHandler'] = async (event
   await addToMasterPlaylist(accessToken, uris);
 
   const now = new Date().toISOString();
+  const editToken = randomBytes(16).toString('hex');
   const entry = {
     id: randomUUID(),
     name,
@@ -58,10 +59,18 @@ export const handler: Schema['submitPlaylist']['functionHandler'] = async (event
   await ddb.send(
     new PutCommand({
       TableName: env.ENTRY_TABLE_NAME,
-      Item: { ...entry, ...(email ? { email } : {}), digestOptIn, createdAt: now, updatedAt: now, __typename: 'Entry' },
+      Item: {
+        ...entry,
+        ...(email ? { email } : {}),
+        editToken,
+        digestOptIn,
+        createdAt: now,
+        updatedAt: now,
+        __typename: 'Entry',
+      },
     }),
   );
-  return entry;
+  return { ...entry, editToken };
 };
 
 function requireEnv<K extends string>(...keys: K[]): Record<K, string> {

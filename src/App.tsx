@@ -15,6 +15,23 @@ type EntryCard = {
 
 const dateFormat = new Intl.DateTimeFormat('en-CA', { month: 'short', day: 'numeric', year: 'numeric' });
 
+// Edit keys live only in the browser that submitted the entry.
+const editKey = (id: string) => `bir-edit-${id}`;
+function loadEditToken(id: string): string | null {
+  try {
+    return localStorage.getItem(editKey(id));
+  } catch {
+    return null;
+  }
+}
+function saveEditToken(id: string, token: string) {
+  try {
+    localStorage.setItem(editKey(id), token);
+  } catch {
+    // private mode or storage blocked; renaming just won't be offered
+  }
+}
+
 function SpotifyEmbed({ playlistId, title, height }: { playlistId: string; title: string; height: number }) {
   return (
     <iframe
@@ -26,6 +43,83 @@ function SpotifyEmbed({ playlistId, title, height }: { playlistId: string; title
       allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
       loading="lazy"
     />
+  );
+}
+
+function CopyName() {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(SPOTIFY_OWNER_NAME);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      window.prompt('Copy this name:', SPOTIFY_OWNER_NAME);
+    }
+  }
+  return (
+    <button type="button" className="copy" onClick={copy} title="Copy to clipboard">
+      {SPOTIFY_OWNER_NAME}
+      <span className="copy-state">{copied ? 'Copied!' : 'Copy'}</span>
+    </button>
+  );
+}
+
+function EntryHeader({ entry, onRenamed }: { entry: EntryCard; onRenamed: (updated: EntryCard) => void }) {
+  const token = loadEditToken(entry.id);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(entry.name);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    if (!token) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const { data, errors } = await client.mutations.renameEntry({ id: entry.id, editToken: token, name: draft });
+      if (!data) throw new Error(errors?.[0]?.message ?? 'Could not save. Try again.');
+      onRenamed({ id: data.id, name: data.name, playlistId: data.playlistId, trackCount: data.trackCount, addedAt: data.addedAt });
+      setEditing(false);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not save. Try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <form className="entry-head rename" onSubmit={save}>
+        <input value={draft} onChange={(e) => setDraft(e.target.value)} maxLength={60} required autoFocus aria-label="Name" />
+        <div className="rename-actions">
+          <button type="submit" className="small" disabled={saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          <button type="button" className="small ghost" onClick={() => { setEditing(false); setDraft(entry.name); setError(null); }}>
+            Cancel
+          </button>
+        </div>
+        {error && <p className="alert error">{error}</p>}
+      </form>
+    );
+  }
+
+  return (
+    <div className="entry-head">
+      <h3>
+        {entry.name}
+        {token && (
+          <button type="button" className="link" onClick={() => setEditing(true)}>
+            Edit name
+          </button>
+        )}
+      </h3>
+      <p className="meta">
+        {entry.trackCount} song{entry.trackCount === 1 ? '' : 's'} · {dateFormat.format(new Date(entry.addedAt))}
+      </p>
+    </div>
   );
 }
 
@@ -69,6 +163,7 @@ export default function App() {
         digestOptIn,
       });
       if (!data) throw new Error(errors?.[0]?.message ?? 'Something went wrong. Try again.');
+      if (data.editToken) saveEditToken(data.id, data.editToken);
       setEntries((prev) => [data, ...(prev ?? [])]);
       setSubmitSuccess(`Added! Your ${data.trackCount} song${data.trackCount === 1 ? '' : 's'} are now in the master playlist.`);
       setName('');
@@ -80,6 +175,10 @@ export default function App() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function onRenamed(updated: EntryCard) {
+    setEntries((prev) => (prev ?? []).map((e) => (e.id === updated.id ? { ...e, name: updated.name } : e)));
   }
 
   return (
@@ -113,7 +212,7 @@ export default function App() {
             <strong>Make a playlist in Spotify</strong> with up to {MAX_TRACKS} songs.
           </li>
           <li>
-            <strong>Invite {SPOTIFY_OWNER_NAME} to it.</strong> Open the playlist, tap the three dots, choose{' '}
+            <strong>Invite <CopyName /> to it.</strong> Open the playlist, tap the three dots, choose{' '}
             <em>Invite collaborators</em>, and send the invite link to Sam. Spotify only lets this site read playlists
             it has been invited to. It is a one-time thing per playlist, and nobody else can edit yours.
           </li>
@@ -187,12 +286,7 @@ export default function App() {
         <div className="grid">
           {entries?.map((entry) => (
             <article className="card entry" key={entry.id}>
-              <div className="entry-head">
-                <h3>{entry.name}</h3>
-                <p className="meta">
-                  {entry.trackCount} song{entry.trackCount === 1 ? '' : 's'} · {dateFormat.format(new Date(entry.addedAt))}
-                </p>
-              </div>
+              <EntryHeader entry={entry} onRenamed={onRenamed} />
               <SpotifyEmbed playlistId={entry.playlistId} title={`${entry.name}'s playlist`} height={352} />
             </article>
           ))}
