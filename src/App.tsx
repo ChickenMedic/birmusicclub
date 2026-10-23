@@ -11,7 +11,10 @@ type EntryCard = {
   playlistId: string;
   trackCount: number;
   addedAt: string;
+  deletedAt: string | null;
 };
+
+type Action = 'rename' | 'delete' | 'restore';
 
 const dateFormat = new Intl.DateTimeFormat('en-CA', { month: 'short', day: 'numeric', year: 'numeric' });
 
@@ -28,8 +31,23 @@ function saveEditToken(id: string, token: string) {
   try {
     localStorage.setItem(editKey(id), token);
   } catch {
-    // private mode or storage blocked; renaming just won't be offered
+    // private mode or storage blocked; editing just won't be offered
   }
+}
+
+async function manage(entry: EntryCard, action: Action, name?: string): Promise<EntryCard> {
+  const token = loadEditToken(entry.id);
+  if (!token) throw new Error('Only the browser that submitted this playlist can change it.');
+  const { data, errors } = await client.mutations.manageEntry({ id: entry.id, editToken: token, action, name });
+  if (!data) throw new Error(errors?.[0]?.message ?? 'Could not save. Try again.');
+  return {
+    id: data.id,
+    name: data.name,
+    playlistId: data.playlistId,
+    trackCount: data.trackCount,
+    addedAt: data.addedAt,
+    deletedAt: data.deletedAt ?? null,
+  };
 }
 
 function SpotifyEmbed({ playlistId, title, height }: { playlistId: string; title: string; height: number }) {
@@ -65,23 +83,77 @@ function CopyName() {
   );
 }
 
-function EntryHeader({ entry, onRenamed }: { entry: EntryCard; onRenamed: (updated: EntryCard) => void }) {
-  const token = loadEditToken(entry.id);
-  const [editing, setEditing] = useState(false);
+// "Type the word to confirm" control used for delete and restore.
+function ConfirmWord({
+  word,
+  label,
+  danger,
+  onConfirm,
+  onCancel,
+}: {
+  word: string;
+  label: string;
+  danger?: boolean;
+  onConfirm: () => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ready = typed.trim().toLowerCase() === word;
+
+  async function go(e: FormEvent) {
+    e.preventDefault();
+    if (!ready) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onConfirm();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Something went wrong. Try again.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="confirm" onSubmit={go}>
+      <label>
+        Type <strong>{word}</strong> to confirm
+        <input value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus autoComplete="off" spellCheck={false} />
+      </label>
+      <div className="rename-actions">
+        <button type="submit" className={`small${danger ? ' danger' : ''}`} disabled={!ready || busy}>
+          {busy ? 'Working…' : label}
+        </button>
+        <button type="button" className="small ghost" onClick={onCancel} disabled={busy}>
+          Cancel
+        </button>
+      </div>
+      {error && <p className="alert error">{error}</p>}
+    </form>
+  );
+}
+
+function EntryHeader({ entry, onChanged }: { entry: EntryCard; onChanged: (updated: EntryCard) => void }) {
+  const mine = loadEditToken(entry.id) !== null;
+  const [mode, setMode] = useState<'view' | 'rename' | 'delete'>('view');
   const [draft, setDraft] = useState(entry.name);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function save(e: FormEvent) {
+  function reset() {
+    setMode('view');
+    setDraft(entry.name);
+    setError(null);
+  }
+
+  async function saveName(e: FormEvent) {
     e.preventDefault();
-    if (!token) return;
     setSaving(true);
     setError(null);
     try {
-      const { data, errors } = await client.mutations.renameEntry({ id: entry.id, editToken: token, name: draft });
-      if (!data) throw new Error(errors?.[0]?.message ?? 'Could not save. Try again.');
-      onRenamed({ id: data.id, name: data.name, playlistId: data.playlistId, trackCount: data.trackCount, addedAt: data.addedAt });
-      setEditing(false);
+      onChanged(await manage(entry, 'rename', draft));
+      setMode('view');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Could not save. Try again.');
     } finally {
@@ -89,15 +161,15 @@ function EntryHeader({ entry, onRenamed }: { entry: EntryCard; onRenamed: (updat
     }
   }
 
-  if (editing) {
+  if (mode === 'rename') {
     return (
-      <form className="entry-head rename" onSubmit={save}>
+      <form className="entry-head rename" onSubmit={saveName}>
         <input value={draft} onChange={(e) => setDraft(e.target.value)} maxLength={60} required autoFocus aria-label="Name" />
         <div className="rename-actions">
           <button type="submit" className="small" disabled={saving}>
             {saving ? 'Saving…' : 'Save'}
           </button>
-          <button type="button" className="small ghost" onClick={() => { setEditing(false); setDraft(entry.name); setError(null); }}>
+          <button type="button" className="small ghost" onClick={reset}>
             Cancel
           </button>
         </div>
@@ -106,20 +178,69 @@ function EntryHeader({ entry, onRenamed }: { entry: EntryCard; onRenamed: (updat
     );
   }
 
+  if (mode === 'delete') {
+    return (
+      <div className="entry-head">
+        <h3>{entry.name}</h3>
+        <p className="meta">This removes your songs from the master playlist. You can restore it later.</p>
+        <ConfirmWord
+          word="delete"
+          label="Delete playlist"
+          danger
+          onConfirm={async () => onChanged(await manage(entry, 'delete'))}
+          onCancel={reset}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="entry-head">
       <h3>
         {entry.name}
-        {token && (
-          <button type="button" className="link" onClick={() => setEditing(true)}>
-            Edit name
-          </button>
+        {mine && (
+          <span className="owner-actions">
+            <button type="button" className="link" onClick={() => setMode('rename')}>
+              Edit name
+            </button>
+            <button type="button" className="link" onClick={() => setMode('delete')}>
+              Delete
+            </button>
+          </span>
         )}
       </h3>
       <p className="meta">
         {entry.trackCount} song{entry.trackCount === 1 ? '' : 's'} · {dateFormat.format(new Date(entry.addedAt))}
       </p>
     </div>
+  );
+}
+
+function DeletedEntry({ entry, onChanged }: { entry: EntryCard; onChanged: (updated: EntryCard) => void }) {
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <li className="deleted-item">
+      <div>
+        <strong>{entry.name}</strong>
+        <span className="meta">
+          {' '}
+          · {entry.trackCount} song{entry.trackCount === 1 ? '' : 's'} · deleted{' '}
+          {entry.deletedAt ? dateFormat.format(new Date(entry.deletedAt)) : ''}
+        </span>
+      </div>
+      {confirming ? (
+        <ConfirmWord
+          word="restore"
+          label="Restore playlist"
+          onConfirm={async () => onChanged(await manage(entry, 'restore'))}
+          onCancel={() => setConfirming(false)}
+        />
+      ) : (
+        <button type="button" className="small ghost" onClick={() => setConfirming(true)}>
+          Restore
+        </button>
+      )}
+    </li>
   );
 }
 
@@ -138,11 +259,15 @@ export default function App() {
   useEffect(() => {
     async function load() {
       const { data, errors } = await client.models.Entry.list({
-        selectionSet: ['id', 'name', 'playlistId', 'trackCount', 'addedAt'],
+        selectionSet: ['id', 'name', 'playlistId', 'trackCount', 'addedAt', 'deletedAt'],
         limit: 500,
       });
       if (errors?.length) throw new Error(errors[0].message);
-      setEntries([...data].sort((a, b) => b.addedAt.localeCompare(a.addedAt)));
+      setEntries(
+        data
+          .map((e) => ({ ...e, deletedAt: e.deletedAt ?? null }))
+          .sort((a, b) => b.addedAt.localeCompare(a.addedAt)),
+      );
     }
     load().catch((err: unknown) => {
       console.error(err);
@@ -164,7 +289,7 @@ export default function App() {
       });
       if (!data) throw new Error(errors?.[0]?.message ?? 'Something went wrong. Try again.');
       if (data.editToken) saveEditToken(data.id, data.editToken);
-      setEntries((prev) => [data, ...(prev ?? [])]);
+      setEntries((prev) => [{ ...data, deletedAt: null }, ...(prev ?? [])]);
       setSubmitSuccess(`Added! Your ${data.trackCount} song${data.trackCount === 1 ? '' : 's'} are now in the master playlist.`);
       setName('');
       setEmail('');
@@ -177,9 +302,12 @@ export default function App() {
     }
   }
 
-  function onRenamed(updated: EntryCard) {
-    setEntries((prev) => (prev ?? []).map((e) => (e.id === updated.id ? { ...e, name: updated.name } : e)));
+  function onChanged(updated: EntryCard) {
+    setEntries((prev) => (prev ?? []).map((e) => (e.id === updated.id ? { ...e, ...updated } : e)));
   }
+
+  const active = entries?.filter((e) => !e.deletedAt) ?? null;
+  const myDeleted = entries?.filter((e) => e.deletedAt && loadEditToken(e.id) !== null) ?? [];
 
   return (
     <div className="page">
@@ -274,24 +402,36 @@ export default function App() {
       <section className="entries">
         <div className="card-head">
           <h2>Everyone's playlists</h2>
-          {entries && <span className="count">{entries.length}</span>}
+          {active && <span className="count">{active.length}</span>}
         </div>
         {loadError && <p className="alert error">{loadError}</p>}
         {!loadError && entries === null && <p className="muted">Loading…</p>}
-        {entries?.length === 0 && (
+        {active?.length === 0 && (
           <p className="muted">
             No playlists yet. <a href="#submit">Be the first.</a>
           </p>
         )}
         <div className="grid">
-          {entries?.map((entry) => (
+          {active?.map((entry) => (
             <article className="card entry" key={entry.id}>
-              <EntryHeader entry={entry} onRenamed={onRenamed} />
+              <EntryHeader entry={entry} onChanged={onChanged} />
               <SpotifyEmbed playlistId={entry.playlistId} title={`${entry.name}'s playlist`} height={352} />
             </article>
           ))}
         </div>
       </section>
+
+      {myDeleted.length > 0 && (
+        <section className="card deleted">
+          <h2>Your deleted playlists</h2>
+          <p className="lede">Only you can see these. Restoring puts the songs back in the master playlist.</p>
+          <ul className="deleted-list">
+            {myDeleted.map((entry) => (
+              <DeletedEntry key={entry.id} entry={entry} onChanged={onChanged} />
+            ))}
+          </ul>
+        </section>
+      )}
 
       <footer>
         <p>Made for the BIR office. Not affiliated with Spotify.</p>

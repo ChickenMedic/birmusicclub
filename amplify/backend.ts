@@ -4,13 +4,13 @@ import { AttributeType, BillingMode, Table } from 'aws-cdk-lib/aws-dynamodb';
 import { auth } from './auth/resource';
 import { data } from './data/resource';
 import { submitPlaylist } from './submit-playlist/resource';
-import { renameEntry } from './rename-entry/resource';
+import { manageEntry } from './manage-entry/resource';
 
 const backend = defineBackend({
   auth,
   data,
   submitPlaylist,
-  renameEntry,
+  manageEntry,
 });
 
 // Nobody signs in to this site. Cognito exists only so the identity pool can hand guests
@@ -26,9 +26,9 @@ const submitLambda = backend.submitPlaylist.resources.lambda;
 entryTable.grantWriteData(submitLambda);
 backend.submitPlaylist.addEnvironment('ENTRY_TABLE_NAME', entryTable.tableName);
 
-const renameLambda = backend.renameEntry.resources.lambda;
-entryTable.grantReadWriteData(renameLambda);
-backend.renameEntry.addEnvironment('ENTRY_TABLE_NAME', entryTable.tableName);
+const manageLambda = backend.manageEntry.resources.lambda;
+entryTable.grantReadWriteData(manageLambda);
+backend.manageEntry.addEnvironment('ENTRY_TABLE_NAME', entryTable.tableName);
 
 // Per-IP attempt counters for rate limiting. Rows expire on their own via TTL.
 const rateLimitTable = new Table(Stack.of(submitLambda), 'RateLimitTable', {

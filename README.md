@@ -7,7 +7,8 @@ Coworkers share Spotify playlists (max 11 songs each) and the songs get added to
 - Amplify Gen 2 (TypeScript) on AWS: AppSync data API over DynamoDB, Lambdas, SES, EventBridge.
 - Vite + React frontend hosted on Amplify Hosting at https://birmusicclub.com.
 - Public site reads the `Entry` model as a guest through the Cognito identity pool. Nobody signs in; the user pool is admin-create-only.
-- The only write path is the `submitPlaylist` mutation, handled by `amplify/submit-playlist/handler.ts`.
+- Entries are created by the `submitPlaylist` mutation (`amplify/submit-playlist/handler.ts`). It returns a per-entry `editToken` that the submitting browser keeps in localStorage.
+- `manageEntry` (`amplify/manage-entry/handler.ts`) renames, soft-deletes or restores an entry when given that token. Delete removes the entry's songs from the master playlist and restore adds them back, skipping any song another active entry also contributed. Deleted entries keep their record (`deletedAt`) so restore is trivial.
 - `config.ts` holds the master playlist ID and the Spotify account name; both the site and the Lambda import it.
 
 ## Spotify constraint

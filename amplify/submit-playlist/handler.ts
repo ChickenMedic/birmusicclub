@@ -2,24 +2,20 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import type { Schema } from '../data/resource';
-import { MASTER_PLAYLIST_ID, MAX_TRACKS, SPOTIFY_OWNER_NAME } from '../../config';
+import { addToMasterPlaylist, refreshSpotifyToken, spotifyFetch } from '../spotify';
+import { MAX_TRACKS, SPOTIFY_OWNER_NAME } from '../../config';
 
 const RATE_LIMIT_PER_HOUR = 10;
-const SPOTIFY_RETRY_BUDGET_MS = 20_000;
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 // Any Error thrown here reaches the browser as the GraphQL error message, so keep them readable.
 export const handler: Schema['submitPlaylist']['functionHandler'] = async (event) => {
-  const env = requireEnv(
-    'ENTRY_TABLE_NAME',
-    'RATE_LIMIT_TABLE_NAME',
-    'SPOTIFY_CLIENT_ID',
-    'SPOTIFY_CLIENT_SECRET',
-    'SPOTIFY_REFRESH_TOKEN',
-  );
+  const entryTable = process.env.ENTRY_TABLE_NAME;
+  const rateLimitTable = process.env.RATE_LIMIT_TABLE_NAME;
+  if (!entryTable || !rateLimitTable) throw new Error('Server misconfiguration: table names are not set.');
 
-  await enforceRateLimit(env.RATE_LIMIT_TABLE_NAME, clientIp(event.request.headers));
+  await enforceRateLimit(rateLimitTable, clientIp(event.request.headers));
 
   const { digestOptIn } = event.arguments;
   const name = event.arguments.name.trim();
@@ -33,7 +29,7 @@ export const handler: Schema['submitPlaylist']['functionHandler'] = async (event
   }
   if (!playlistId) throw new Error('That does not look like a Spotify playlist link. In Spotify use Share > Copy link to playlist.');
 
-  const accessToken = await refreshSpotifyToken(env);
+  const accessToken = await refreshSpotifyToken();
   const items = await fetchPlaylistItems(accessToken, playlistId);
   if (items.total === 0) throw new Error('That playlist is empty.');
   if (items.total > MAX_TRACKS) {
@@ -58,11 +54,12 @@ export const handler: Schema['submitPlaylist']['functionHandler'] = async (event
   };
   await ddb.send(
     new PutCommand({
-      TableName: env.ENTRY_TABLE_NAME,
+      TableName: entryTable,
       Item: {
         ...entry,
         ...(email ? { email } : {}),
         editToken,
+        trackUris: uris,
         digestOptIn,
         createdAt: now,
         updatedAt: now,
@@ -72,16 +69,6 @@ export const handler: Schema['submitPlaylist']['functionHandler'] = async (event
   );
   return { ...entry, editToken };
 };
-
-function requireEnv<K extends string>(...keys: K[]): Record<K, string> {
-  const out = {} as Record<K, string>;
-  for (const key of keys) {
-    const value = process.env[key];
-    if (!value) throw new Error(`Server misconfiguration: ${key} is not set.`);
-    out[key] = value;
-  }
-  return out;
-}
 
 function clientIp(headers: Record<string, string | undefined>): string {
   const forwarded = headers['x-forwarded-for'] ?? headers['X-Forwarded-For'];
@@ -113,27 +100,6 @@ export function parsePlaylistId(input: string): string | null {
   return m ? m[1] : null;
 }
 
-async function refreshSpotifyToken(env: {
-  SPOTIFY_CLIENT_ID: string;
-  SPOTIFY_CLIENT_SECRET: string;
-  SPOTIFY_REFRESH_TOKEN: string;
-}): Promise<string> {
-  const res = await spotifyFetch('https://accounts.spotify.com/api/token', {
-    method: 'POST',
-    headers: {
-      Authorization: 'Basic ' + Buffer.from(`${env.SPOTIFY_CLIENT_ID}:${env.SPOTIFY_CLIENT_SECRET}`).toString('base64'),
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: env.SPOTIFY_REFRESH_TOKEN }),
-  });
-  if (!res.ok) {
-    console.error('Spotify token refresh failed', res.status, await res.text());
-    throw new Error('Server misconfiguration: could not sign in to Spotify.');
-  }
-  const body = (await res.json()) as { access_token: string };
-  return body.access_token;
-}
-
 type PlaylistItems = {
   total: number;
   items: Array<{ is_local: boolean; item: { uri: string; type: string } | null }>;
@@ -154,31 +120,4 @@ async function fetchPlaylistItems(accessToken: string, playlistId: string): Prom
     throw new Error('Spotify returned an error while reading that playlist. Try again in a minute.');
   }
   return (await res.json()) as PlaylistItems;
-}
-
-async function addToMasterPlaylist(accessToken: string, uris: string[]): Promise<void> {
-  const res = await spotifyFetch(`https://api.spotify.com/v1/playlists/${MASTER_PLAYLIST_ID}/items`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ uris }),
-  });
-  if (!res.ok) {
-    console.error('Spotify add to master playlist failed', res.status, await res.text());
-    throw new Error('Spotify returned an error while adding your songs to the master playlist. Try again in a minute.');
-  }
-}
-
-// fetch that honours Retry-After on 429 within a fixed time budget, then gives up with a clear message.
-async function spotifyFetch(url: string, init: RequestInit): Promise<Response> {
-  const deadline = Date.now() + SPOTIFY_RETRY_BUDGET_MS;
-  for (;;) {
-    const res = await fetch(url, init);
-    if (res.status !== 429) return res;
-    const retryAfterSec = Number(res.headers.get('retry-after') ?? '1') || 1;
-    const waitMs = retryAfterSec * 1000;
-    if (Date.now() + waitMs > deadline) {
-      throw new Error(`Spotify is rate limiting us. Try again in about ${retryAfterSec} seconds.`);
-    }
-    await new Promise((r) => setTimeout(r, waitMs));
-  }
 }

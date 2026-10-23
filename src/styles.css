@@ -287,6 +287,48 @@ button.ghost:hover:not(:disabled) {
   background: var(--surface-2);
   color: var(--text);
 }
+button.danger {
+  background: var(--danger);
+  color: #1a0505;
+}
+button.danger:hover:not(:disabled) {
+  background: #ff8080;
+}
+.owner-actions {
+  display: inline-flex;
+  gap: 2px;
+}
+.confirm {
+  gap: 10px;
+  margin-top: 10px;
+}
+.confirm label strong {
+  color: var(--text);
+}
+.deleted {
+  margin-top: 28px;
+}
+.deleted-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.deleted-item {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+@media (min-width: 640px) {
+  .deleted-item:not(:has(.confirm)) {
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+}
 
 .alert {
   margin: 0;
