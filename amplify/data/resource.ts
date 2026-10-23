@@ -5,15 +5,19 @@ const schema = a.schema({
     .model({
       name: a.string().required(),
       // Hidden from guests: only signed-in users could read it, and sign-up is disabled.
-      // The backend Lambdas (Phase 2 submit, Phase 4 digest) read/write the table directly.
-      email: a.email().required().authorization((allow) => [allow.authenticated()]),
+      // The backend Lambdas (Phase 2 submit, Phase 4 digest) read/write the table directly
+      // and always set it. It is nullable only because Amplify rejects field-level rules
+      // on required fields.
+      email: a.email().authorization((allow) => [allow.authenticated().to(['read'])]),
       playlistUrl: a.url().required(),
       playlistId: a.string().required(),
       trackCount: a.integer().required(),
       digestOptIn: a.boolean().required(),
       addedAt: a.datetime().required(),
     })
-    .authorization((allow) => [allow.guest().to(['read'])]),
+    // authenticated() is listed only so the field-level rule on email is allowed; the user
+    // pool is admin-create-only, so no authenticated user ever exists.
+    .authorization((allow) => [allow.guest().to(['read']), allow.authenticated().to(['read'])]),
 });
 
 export type Schema = ClientSchema<typeof schema>;
