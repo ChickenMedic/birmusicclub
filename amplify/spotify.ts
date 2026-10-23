@@ -1,6 +1,6 @@
 // Spotify helpers shared by the Lambdas. Credentials come from the function's environment
 // (Amplify secrets resolved at runtime).
-import { MASTER_PLAYLIST_ID } from '../config';
+import { MASTER_PLAYLIST_ID, SPOTIFY_OWNER_NAME } from '../config';
 
 const SPOTIFY_RETRY_BUDGET_MS = 20_000;
 const MAX_ITEMS_PER_REQUEST = 100;
@@ -25,6 +25,36 @@ export async function refreshSpotifyToken(): Promise<string> {
   }
   const body = (await res.json()) as { access_token: string };
   return body.access_token;
+}
+
+export type PlaylistItems = {
+  total: number;
+  items: Array<{ is_local: boolean; item: { uri: string; type: string } | null }>;
+};
+
+// Reads a playlist's items. Only works for playlists the app's account owns or collaborates on.
+export async function fetchPlaylistItems(accessToken: string, playlistId: string): Promise<PlaylistItems> {
+  const params = new URLSearchParams({ fields: 'total,items(is_local,item(uri,type))', limit: '50' });
+  const res = await spotifyFetch(`https://api.spotify.com/v1/playlists/${playlistId}/items?${params}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (res.status === 403 || res.status === 404) {
+    throw new Error(
+      `Spotify won't let this site read that playlist yet. Open it in Spotify, tap the three dots, choose Invite collaborators, and send the invite link to ${SPOTIFY_OWNER_NAME}. Once accepted, try again.`,
+    );
+  }
+  if (!res.ok) {
+    console.error('Spotify playlist fetch failed', res.status, await res.text());
+    throw new Error('Spotify returned an error while reading that playlist. Try again in a minute.');
+  }
+  return (await res.json()) as PlaylistItems;
+}
+
+// The URIs that can be added to another playlist (no local files).
+export function addableUris(items: PlaylistItems): string[] {
+  return items.items
+    .filter((i) => !i.is_local && i.item && (i.item.type === 'track' || i.item.type === 'episode'))
+    .map((i) => i.item!.uri);
 }
 
 export async function addToMasterPlaylist(accessToken: string, uris: string[]): Promise<void> {

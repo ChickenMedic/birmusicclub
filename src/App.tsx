@@ -12,9 +12,10 @@ type EntryCard = {
   trackCount: number;
   addedAt: string;
   deletedAt: string | null;
+  claimed: boolean;
 };
 
-type Action = 'rename' | 'delete' | 'restore';
+type Action = 'rename' | 'delete' | 'restore' | 'claim';
 
 const dateFormat = new Intl.DateTimeFormat('en-CA', { month: 'short', day: 'numeric', year: 'numeric' });
 
@@ -37,9 +38,10 @@ function saveEditToken(id: string, token: string) {
 
 async function manage(entry: EntryCard, action: Action, name?: string): Promise<EntryCard> {
   const token = loadEditToken(entry.id);
-  if (!token) throw new Error('Only the browser that submitted this playlist can change it.');
-  const { data, errors } = await client.mutations.manageEntry({ id: entry.id, editToken: token, action, name });
+  if (!token && action !== 'claim') throw new Error('Only the browser that submitted this playlist can change it.');
+  const { data, errors } = await client.mutations.manageEntry({ id: entry.id, editToken: token ?? undefined, action, name });
   if (!data) throw new Error(errors?.[0]?.message ?? 'Could not save. Try again.');
+  if (action === 'claim' && data.editToken) saveEditToken(data.id, data.editToken);
   return {
     id: data.id,
     name: data.name,
@@ -47,6 +49,7 @@ async function manage(entry: EntryCard, action: Action, name?: string): Promise<
     trackCount: data.trackCount,
     addedAt: data.addedAt,
     deletedAt: data.deletedAt ?? null,
+    claimed: data.claimed ?? false,
   };
 }
 
@@ -145,7 +148,7 @@ function ConfirmWord({
 
 function EntryHeader({ entry, onChanged }: { entry: EntryCard; onChanged: (updated: EntryCard) => void }) {
   const mine = loadEditToken(entry.id) !== null;
-  const [mode, setMode] = useState<'view' | 'rename' | 'delete'>('view');
+  const [mode, setMode] = useState<'view' | 'rename' | 'delete' | 'claim'>('view');
   const [draft, setDraft] = useState(entry.name);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -187,6 +190,24 @@ function EntryHeader({ entry, onChanged }: { entry: EntryCard; onChanged: (updat
     );
   }
 
+  if (mode === 'claim') {
+    return (
+      <div className="entry-head">
+        <h3>{entry.name}</h3>
+        <p className="meta">This gives this browser the key to rename or delete this playlist. Only do it if it's yours.</p>
+        <ConfirmWord
+          word="mine"
+          label="Yes, it's mine"
+          onConfirm={async () => {
+            onChanged(await manage(entry, 'claim'));
+            setMode('view');
+          }}
+          onCancel={reset}
+        />
+      </div>
+    );
+  }
+
   if (mode === 'delete') {
     return (
       <div className="entry-head">
@@ -216,6 +237,11 @@ function EntryHeader({ entry, onChanged }: { entry: EntryCard; onChanged: (updat
               Delete
             </button>
           </span>
+        )}
+        {!mine && !entry.claimed && (
+          <button type="button" className="link" onClick={() => setMode('claim')}>
+            This is my playlist
+          </button>
         )}
       </h3>
       <p className="meta">
@@ -268,13 +294,13 @@ export default function App() {
   useEffect(() => {
     async function load() {
       const { data, errors } = await client.models.Entry.list({
-        selectionSet: ['id', 'name', 'playlistId', 'trackCount', 'addedAt', 'deletedAt'],
+        selectionSet: ['id', 'name', 'playlistId', 'trackCount', 'addedAt', 'deletedAt', 'claimed'],
         limit: 500,
       });
       if (errors?.length) throw new Error(errors[0].message);
       setEntries(
         data
-          .map((e) => ({ ...e, deletedAt: e.deletedAt ?? null }))
+          .map((e) => ({ ...e, deletedAt: e.deletedAt ?? null, claimed: e.claimed ?? false }))
           .sort((a, b) => b.addedAt.localeCompare(a.addedAt)),
       );
     }
@@ -298,7 +324,7 @@ export default function App() {
       });
       if (!data) throw new Error(errors?.[0]?.message ?? 'Something went wrong. Try again.');
       if (data.editToken) saveEditToken(data.id, data.editToken);
-      setEntries((prev) => [{ ...data, deletedAt: null }, ...(prev ?? [])]);
+      setEntries((prev) => [{ ...data, deletedAt: null, claimed: true }, ...(prev ?? [])]);
       setSubmitSuccess(`Added! Your ${data.trackCount} song${data.trackCount === 1 ? '' : 's'} are now in the master playlist.`);
       setName('');
       setEmail('');

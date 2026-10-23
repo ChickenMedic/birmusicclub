@@ -1,7 +1,8 @@
+import { randomBytes } from 'node:crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, ScanCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import type { Schema } from '../data/resource';
-import { addToMasterPlaylist, refreshSpotifyToken, removeFromMasterPlaylist } from '../spotify';
+import { addToMasterPlaylist, addableUris, fetchPlaylistItems, refreshSpotifyToken, removeFromMasterPlaylist } from '../spotify';
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
@@ -13,6 +14,7 @@ type EntryItem = {
   trackCount: number;
   addedAt: string;
   deletedAt?: string;
+  claimed?: boolean;
   editToken?: string;
   trackUris?: string[];
 };
@@ -23,17 +25,44 @@ const NOT_YOURS = 'Only the browser that submitted this playlist can change it.'
 // submitPlaylist handed out; the submitting browser keeps it in localStorage.
 // Delete/restore keep the master playlist in sync, without touching songs that another
 // active entry also contributed.
+// "claim" exists for entries created before edit tokens were introduced: it issues a token
+// (once) and backfills the song list from Spotify.
 export const handler: Schema['manageEntry']['functionHandler'] = async (event) => {
   const tableName = process.env.ENTRY_TABLE_NAME;
   if (!tableName) throw new Error('Server misconfiguration: ENTRY_TABLE_NAME is not set.');
 
   const { id, editToken, action } = event.arguments;
-  if (!id || !editToken) throw new Error(NOT_YOURS);
+  if (!id) throw new Error(NOT_YOURS);
 
   const current = (await ddb.send(new GetCommand({ TableName: tableName, Key: { id } }))).Item as EntryItem | undefined;
-  if (!current || current.editToken !== editToken) throw new Error(NOT_YOURS);
+  if (!current) throw new Error(NOT_YOURS);
 
   const now = new Date().toISOString();
+
+  if (action === 'claim') {
+    if (current.editToken) throw new Error('This playlist has already been claimed.');
+    const accessToken = await refreshSpotifyToken();
+    const items = await fetchPlaylistItems(accessToken, current.playlistId);
+    const token = randomBytes(16).toString('hex');
+    try {
+      const result = await ddb.send(
+        new UpdateCommand({
+          TableName: tableName,
+          Key: { id },
+          UpdateExpression: 'SET editToken = :token, claimed = :true, trackUris = :uris, trackCount = :count, updatedAt = :now',
+          ConditionExpression: 'attribute_not_exists(editToken)',
+          ExpressionAttributeValues: { ':token': token, ':true': true, ':uris': addableUris(items), ':count': items.total, ':now': now },
+          ReturnValues: 'ALL_NEW',
+        }),
+      );
+      return { ...publicFields(result.Attributes as EntryItem), editToken: token };
+    } catch (err) {
+      if ((err as { name?: string }).name === 'ConditionalCheckFailedException') throw new Error('This playlist has already been claimed.');
+      throw err;
+    }
+  }
+
+  if (!editToken || current.editToken !== editToken) throw new Error(NOT_YOURS);
 
   switch (action) {
     case 'rename': {
@@ -117,5 +146,6 @@ function publicFields(item: EntryItem) {
     trackCount: item.trackCount,
     addedAt: item.addedAt,
     deletedAt: item.deletedAt ?? null,
+    claimed: item.claimed ?? false,
   };
 }

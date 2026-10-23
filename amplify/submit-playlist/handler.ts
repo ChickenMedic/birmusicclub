@@ -2,8 +2,8 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import type { Schema } from '../data/resource';
-import { addToMasterPlaylist, refreshSpotifyToken, spotifyFetch } from '../spotify';
-import { MAX_TRACKS, SPOTIFY_OWNER_NAME } from '../../config';
+import { addToMasterPlaylist, addableUris, fetchPlaylistItems, refreshSpotifyToken } from '../spotify';
+import { MAX_TRACKS } from '../../config';
 
 const RATE_LIMIT_PER_HOUR = 10;
 
@@ -35,9 +35,7 @@ export const handler: Schema['submitPlaylist']['functionHandler'] = async (event
   if (items.total > MAX_TRACKS) {
     throw new Error(`That playlist has ${items.total} songs. The limit is ${MAX_TRACKS}. Trim it down and try again.`);
   }
-  const uris = items.items
-    .filter((i) => !i.is_local && i.item && (i.item.type === 'track' || i.item.type === 'episode'))
-    .map((i) => i.item!.uri);
+  const uris = addableUris(items);
   if (uris.length === 0) throw new Error('Those songs are local files, which Spotify cannot add to another playlist.');
 
   await addToMasterPlaylist(accessToken, uris);
@@ -59,6 +57,7 @@ export const handler: Schema['submitPlaylist']['functionHandler'] = async (event
         ...entry,
         ...(email ? { email } : {}),
         editToken,
+        claimed: true,
         trackUris: uris,
         digestOptIn,
         createdAt: now,
@@ -67,7 +66,7 @@ export const handler: Schema['submitPlaylist']['functionHandler'] = async (event
       },
     }),
   );
-  return { ...entry, editToken };
+  return { ...entry, claimed: true, editToken };
 };
 
 function clientIp(headers: Record<string, string | undefined>): string {
@@ -98,26 +97,4 @@ export function parsePlaylistId(input: string): string | null {
   if (/^[A-Za-z0-9]{22}$/.test(trimmed)) return trimmed;
   const m = trimmed.match(/(?:open\.spotify\.com\/(?:[a-z-]+\/)?playlist\/|spotify:playlist:)([A-Za-z0-9]{22})/);
   return m ? m[1] : null;
-}
-
-type PlaylistItems = {
-  total: number;
-  items: Array<{ is_local: boolean; item: { uri: string; type: string } | null }>;
-};
-
-async function fetchPlaylistItems(accessToken: string, playlistId: string): Promise<PlaylistItems> {
-  const params = new URLSearchParams({ fields: 'total,items(is_local,item(uri,type))', limit: '50' });
-  const res = await spotifyFetch(`https://api.spotify.com/v1/playlists/${playlistId}/items?${params}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (res.status === 403 || res.status === 404) {
-    throw new Error(
-      `Spotify won't let this site read that playlist yet. Open it in Spotify, tap the three dots, choose Invite collaborators, and send the invite link to ${SPOTIFY_OWNER_NAME}. Once accepted, try again.`,
-    );
-  }
-  if (!res.ok) {
-    console.error('Spotify playlist fetch failed', res.status, await res.text());
-    throw new Error('Spotify returned an error while reading that playlist. Try again in a minute.');
-  }
-  return (await res.json()) as PlaylistItems;
 }

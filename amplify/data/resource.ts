@@ -26,6 +26,8 @@ const schema = a.schema({
       addedAt: a.datetime().required(),
       // Set when the owner deletes the entry. The record is kept so it can be restored.
       deletedAt: a.datetime(),
+      // False only for entries created before edit tokens existed; they show a one-time "claim" link.
+      claimed: a.boolean(),
     })
     // authenticated() is listed only so the field-level rules above are allowed; the user
     // pool is admin-create-only, so no authenticated user ever exists.
@@ -40,6 +42,7 @@ const schema = a.schema({
     trackCount: a.integer().required(),
     addedAt: a.string().required(),
     deletedAt: a.string(),
+    claimed: a.boolean(),
     editToken: a.string(),
   }),
 
@@ -60,12 +63,13 @@ const schema = a.schema({
 
   // Rename, delete (soft) or restore an entry. Requires the editToken from submitPlaylist.
   // Delete removes the entry's songs from the master playlist; restore adds them back.
+  // "claim" issues a token for an entry that predates tokens (no editToken needed, works once).
   manageEntry: a
     .mutation()
     .arguments({
       id: a.string().required(),
-      editToken: a.string().required(),
-      action: a.enum(['rename', 'delete', 'restore']),
+      editToken: a.string(),
+      action: a.enum(['rename', 'delete', 'restore', 'claim']),
       name: a.string(),
     })
     .returns(a.ref('SubmittedEntry'))
