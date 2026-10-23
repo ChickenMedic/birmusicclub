@@ -17,6 +17,8 @@ frontend:
         - nvm use 22 || nvm install 22
     build:
       commands:
+        # The backend step writes amplify_outputs.json to the repo root; the site fetches it at runtime.
+        - mkdir -p public && cp amplify_outputs.json public/
         - npm run build
   artifacts:
     baseDirectory: dist

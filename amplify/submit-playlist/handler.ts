@@ -1,10 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import bcrypt from 'bcryptjs';
 import type { Schema } from '../data/resource';
+import { MASTER_PLAYLIST_ID, MAX_TRACKS, SPOTIFY_OWNER_NAME } from '../../config';
 
-const MAX_TRACKS = 11;
 const RATE_LIMIT_PER_HOUR = 10;
 const SPOTIFY_RETRY_BUDGET_MS = 20_000;
 
@@ -15,26 +14,21 @@ export const handler: Schema['submitPlaylist']['functionHandler'] = async (event
   const env = requireEnv(
     'ENTRY_TABLE_NAME',
     'RATE_LIMIT_TABLE_NAME',
-    'MASTER_PLAYLIST_ID',
     'SPOTIFY_CLIENT_ID',
     'SPOTIFY_CLIENT_SECRET',
     'SPOTIFY_REFRESH_TOKEN',
-    'SHARED_PASSWORD_HASH',
   );
 
   await enforceRateLimit(env.RATE_LIMIT_TABLE_NAME, clientIp(event.request.headers));
 
-  const { password, digestOptIn } = event.arguments;
+  const { digestOptIn } = event.arguments;
   const name = event.arguments.name.trim();
   const email = event.arguments.email.trim().toLowerCase();
   const playlistId = parsePlaylistId(event.arguments.playlistUrl);
 
-  if (!password || !(await bcrypt.compare(password, env.SHARED_PASSWORD_HASH))) {
-    throw new Error('Wrong password.');
-  }
   if (name.length < 1 || name.length > 60) throw new Error('Please enter your name (up to 60 characters).');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) throw new Error('Please enter a valid email address.');
-  if (!playlistId) throw new Error('That does not look like a Spotify playlist link. Use Share > Copy link to playlist in Spotify.');
+  if (!playlistId) throw new Error('That does not look like a Spotify playlist link. In Spotify use Share > Copy link to playlist.');
 
   const accessToken = await refreshSpotifyToken(env);
   const items = await fetchPlaylistItems(accessToken, playlistId);
@@ -47,22 +41,23 @@ export const handler: Schema['submitPlaylist']['functionHandler'] = async (event
     .map((i) => i.item!.uri);
   if (uris.length === 0) throw new Error('Those songs are local files, which Spotify cannot add to another playlist.');
 
-  await addToMasterPlaylist(accessToken, env.MASTER_PLAYLIST_ID, uris);
+  await addToMasterPlaylist(accessToken, uris);
 
   const now = new Date().toISOString();
   const entry = {
     id: randomUUID(),
     name,
-    email,
     playlistUrl: `https://open.spotify.com/playlist/${playlistId}`,
     playlistId,
     trackCount: items.total,
-    digestOptIn,
     addedAt: now,
-    createdAt: now,
-    updatedAt: now,
   };
-  await ddb.send(new PutCommand({ TableName: env.ENTRY_TABLE_NAME, Item: { ...entry, __typename: 'Entry' } }));
+  await ddb.send(
+    new PutCommand({
+      TableName: env.ENTRY_TABLE_NAME,
+      Item: { ...entry, email, digestOptIn, createdAt: now, updatedAt: now, __typename: 'Entry' },
+    }),
+  );
   return entry;
 };
 
@@ -81,7 +76,7 @@ function clientIp(headers: Record<string, string | undefined>): string {
   return forwarded?.split(',')[0]?.trim() || 'unknown';
 }
 
-// Counts every attempt (including wrong passwords) per IP per clock hour. Rows expire via TTL.
+// Counts every attempt per IP per clock hour. Rows expire via TTL.
 async function enforceRateLimit(tableName: string, ip: string): Promise<void> {
   const hour = Math.floor(Date.now() / 3_600_000);
   const result = await ddb.send(
@@ -139,7 +134,7 @@ async function fetchPlaylistItems(accessToken: string, playlistId: string): Prom
   });
   if (res.status === 403 || res.status === 404) {
     throw new Error(
-      "Spotify won't let us read that playlist. Make sure it is public, or add the master playlist's owner as a collaborator, then try again.",
+      `Spotify won't let this site read that playlist yet. In Spotify, open your playlist, tap the three dots, choose Invite collaborators, and add ${SPOTIFY_OWNER_NAME}. Then try again.`,
     );
   }
   if (!res.ok) {
@@ -149,8 +144,8 @@ async function fetchPlaylistItems(accessToken: string, playlistId: string): Prom
   return (await res.json()) as PlaylistItems;
 }
 
-async function addToMasterPlaylist(accessToken: string, masterPlaylistId: string, uris: string[]): Promise<void> {
-  const res = await spotifyFetch(`https://api.spotify.com/v1/playlists/${masterPlaylistId}/items`, {
+async function addToMasterPlaylist(accessToken: string, uris: string[]): Promise<void> {
+  const res = await spotifyFetch(`https://api.spotify.com/v1/playlists/${MASTER_PLAYLIST_ID}/items`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ uris }),
