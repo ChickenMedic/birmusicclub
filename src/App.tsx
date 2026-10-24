@@ -53,31 +53,74 @@ async function manage(entry: EntryCard, action: Action, name?: string): Promise<
   };
 }
 
+// A mirror ball: small tiles laid out on a sphere, each lit by a fixed light so the
+// shading reads as 3D, slowly rotating with the odd tile glinting.
+const BALL = { cx: 60, cy: 90, r: 54, latStep: 12, lonStep: 12 };
+const LIGHT = (() => {
+  const v = [-0.45, 0.55, 0.7];
+  const len = Math.hypot(...v);
+  return v.map((x) => x / len);
+})();
+const rad = (deg: number) => (deg * Math.PI) / 180;
+
+function sphereTiles(offsetDeg: number) {
+  const { cx, cy, r, latStep, lonStep } = BALL;
+  const tiles: { key: string; points: string; fill: string }[] = [];
+  const phase = Math.floor(offsetDeg / 24);
+  for (let lat = -84; lat < 84; lat += latStep) {
+    for (let lon0 = 0; lon0 < 360; lon0 += lonStep) {
+      const lon = lon0 + offsetDeg;
+      const cLat = rad(lat + latStep / 2);
+      const cLon = rad(lon + lonStep / 2);
+      const n = [Math.cos(cLat) * Math.sin(cLon), Math.sin(cLat), Math.cos(cLat) * Math.cos(cLon)];
+      if (n[2] <= 0.03) continue; // back of the ball
+      const gap = 0.14;
+      const corners: [number, number][] = [
+        [lat + latStep * gap, lon + lonStep * gap],
+        [lat + latStep * (1 - gap), lon + lonStep * gap],
+        [lat + latStep * (1 - gap), lon + lonStep * (1 - gap)],
+        [lat + latStep * gap, lon + lonStep * (1 - gap)],
+      ];
+      const points = corners
+        .map(([la, lo]) => `${(cx + r * Math.cos(rad(la)) * Math.sin(rad(lo))).toFixed(1)},${(cy - r * Math.sin(rad(la))).toFixed(1)}`)
+        .join(' ');
+      const diffuse = Math.max(0, n[0] * LIGHT[0] + n[1] * LIGHT[1] + n[2] * LIGHT[2]);
+      const seed = (lat * 73856093) ^ (lon0 * 19349663) ^ (phase * 83492791);
+      const glint = Math.abs(seed) % 9 === 0;
+      const lightness = Math.min(100, 30 + diffuse * 52 + (glint ? 28 : 0));
+      tiles.push({ key: `${lat}-${lon0}`, points, fill: `hsl(210 ${glint ? 10 : 22}% ${lightness.toFixed(0)}%)` });
+    }
+  }
+  return tiles;
+}
+
 function DiscoBall() {
+  const [offset, setOffset] = useState(0);
+  useEffect(() => {
+    const still =
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches || window.matchMedia('(max-width: 700px)').matches;
+    if (still) return;
+    const id = window.setInterval(() => setOffset((o) => (o + 0.9) % 360), 50);
+    return () => window.clearInterval(id);
+  }, []);
+  const { cx, cy, r } = BALL;
   return (
     <div className="disco-wrap" aria-hidden="true">
-      <svg className="disco" viewBox="0 0 120 150" width="120" height="150">
+      <svg className="disco" viewBox="0 0 120 150" width="132" height="165">
         <defs>
-          <pattern id="disco-tiles" width="10" height="10" patternUnits="userSpaceOnUse">
-            <rect width="9" height="9" fill="#d6dfe9" />
-            <rect x="0" y="0" width="4.5" height="4.5" fill="#f3f7fb" opacity="0.7" />
-          </pattern>
-          <radialGradient id="disco-shine" cx="35%" cy="28%" r="75%">
-            <stop offset="0" stopColor="#ffffff" stopOpacity="0.95" />
-            <stop offset="0.45" stopColor="#ffffff" stopOpacity="0" />
-            <stop offset="1" stopColor="#000000" stopOpacity="0.55" />
+          <radialGradient id="disco-shine" cx="36%" cy="30%" r="70%">
+            <stop offset="0" stopColor="#ffffff" stopOpacity="0.55" />
+            <stop offset="0.4" stopColor="#ffffff" stopOpacity="0" />
+            <stop offset="1" stopColor="#000000" stopOpacity="0.5" />
           </radialGradient>
-          <clipPath id="disco-clip">
-            <circle cx="60" cy="90" r="54" />
-          </clipPath>
         </defs>
-        <line x1="60" y1="0" x2="60" y2="36" stroke="#8d99a8" strokeWidth="2" />
-        <circle cx="60" cy="90" r="54" fill="#7d8794" />
-        <g clipPath="url(#disco-clip)">
-          <rect className="disco-tiles" x="-20" y="30" width="200" height="120" fill="url(#disco-tiles)" />
-        </g>
-        <circle cx="60" cy="90" r="54" fill="url(#disco-shine)" />
-        <circle cx="60" cy="90" r="54" fill="none" stroke="#5c6673" strokeWidth="2" />
+        <line x1={cx} y1="0" x2={cx} y2={cy - r - 4} stroke="#8d99a8" strokeWidth="2" />
+        <circle cx={cx} cy={cy - r - 4} r="3" fill="#aab4c0" />
+        <circle cx={cx} cy={cy} r={r} fill="#2b323b" />
+        {sphereTiles(offset).map((t) => (
+          <polygon key={t.key} points={t.points} fill={t.fill} />
+        ))}
+        <circle cx={cx} cy={cy} r={r} fill="url(#disco-shine)" />
       </svg>
       <span className="sparkle s1">✦</span>
       <span className="sparkle s2">✦</span>
@@ -257,7 +300,7 @@ function EntryHeader({ entry, onChanged }: { entry: EntryCard; onChanged: (updat
     return (
       <div className="entry-head">
         <h3>{entry.name}</h3>
-        <p className="meta">This removes your songs from the master playlist. You can restore it later.</p>
+        <p className="meta">This removes your songs from the Master Mix. You can restore it later.</p>
         <ConfirmWord
           word="delete"
           label="Delete playlist"
@@ -271,27 +314,27 @@ function EntryHeader({ entry, onChanged }: { entry: EntryCard; onChanged: (updat
 
   return (
     <div className="entry-head">
-      <h3>
-        {entry.name}
+      <h3>{entry.name}</h3>
+      <p className="meta">
+        {entry.trackCount} song{entry.trackCount === 1 ? '' : 's'} · {dateFormat.format(new Date(entry.addedAt))}
+      </p>
+      <div className="owner-actions">
         {mine && (
-          <span className="owner-actions">
+          <>
             <button type="button" className="link" onClick={() => setMode('rename')}>
               Edit name
             </button>
             <button type="button" className="link" onClick={() => setMode('delete')}>
               Delete
             </button>
-          </span>
+          </>
         )}
         {!mine && !entry.claimed && (
           <button type="button" className="link" onClick={() => setMode('claim')}>
             This is my playlist
           </button>
         )}
-      </h3>
-      <p className="meta">
-        {entry.trackCount} song{entry.trackCount === 1 ? '' : 's'} · {dateFormat.format(new Date(entry.addedAt))}
-      </p>
+      </div>
     </div>
   );
 }
@@ -370,7 +413,7 @@ export default function App() {
       if (!data) throw new Error(errors?.[0]?.message ?? 'Something went wrong. Try again.');
       if (data.editToken) saveEditToken(data.id, data.editToken);
       setEntries((prev) => [{ ...data, deletedAt: null, claimed: true }, ...(prev ?? [])]);
-      setSubmitSuccess(`Added! Your ${data.trackCount} song${data.trackCount === 1 ? '' : 's'} are now in the master playlist.`);
+      setSubmitSuccess(`Added! Your ${data.trackCount} song${data.trackCount === 1 ? '' : 's'} are now in the Master Mix.`);
       setName('');
       setEmail('');
       setPlaylistUrl('');
@@ -402,14 +445,14 @@ export default function App() {
       </div>
       <header className="hero">
         <DiscoBall />
+        <h1>BIR Music Club</h1>
         <p className="eyebrow">
           <Equalizer />
-          Office playlist exchange
+          BIR Master Mix
           <Equalizer />
         </p>
-        <h1>BIR Music Club</h1>
         <p className="tagline">
-          Everyone picks {MAX_TRACKS} songs. They all land in one master playlist.
+          Everyone picks {MAX_TRACKS} songs. They all land in one Master Mix.
         </p>
         <p className="stats">
           {active && active.length > 0
@@ -420,16 +463,16 @@ export default function App() {
 
       <section className="card master">
         <div className="card-head">
-          <h2>The master playlist</h2>
+          <h2>The Master Mix</h2>
           <a href={`https://open.spotify.com/playlist/${MASTER_PLAYLIST_ID}`} target="_blank" rel="noreferrer">
             Open in Spotify
           </a>
         </div>
-        <SpotifyEmbed playlistId={MASTER_PLAYLIST_ID} title="BIR Music Club master playlist" height={380} />
+        <SpotifyEmbed playlistId={MASTER_PLAYLIST_ID} title="BIR Master Mix" height={720} />
         <p className="hint embed-fallback">
           Player not loading?{' '}
           <a href={`https://open.spotify.com/playlist/${MASTER_PLAYLIST_ID}`} target="_blank" rel="noreferrer">
-            Open the master playlist in Spotify
+            Open the Master Mix in Spotify
           </a>
           .
         </p>
@@ -438,8 +481,8 @@ export default function App() {
       <section className="card submit" id="submit">
         <h2>Add your playlist</h2>
         <p className="lede">
-          Pick up to {MAX_TRACKS} songs. Your playlist gets its own card below, and the songs are added to the master
-          playlist automatically.
+          Pick up to {MAX_TRACKS} songs. Your playlist gets its own card below, and the songs are added to the Master Mix
+          automatically.
         </p>
         <ol className="steps">
           <li>
@@ -524,7 +567,12 @@ export default function App() {
           {active?.map((entry) => (
             <article className={`card entry${isFounder(entry.name) ? ' founder' : ''}`} key={entry.id}>
               <EntryHeader entry={entry} onChanged={onChanged} />
-              <SpotifyEmbed playlistId={entry.playlistId} title={`${entry.name}'s playlist`} height={352} />
+              <SpotifyEmbed playlistId={entry.playlistId} title={`${entry.name}'s playlist`} height={460} />
+              <p className="entry-foot">
+                <a href={`https://open.spotify.com/playlist/${entry.playlistId}`} target="_blank" rel="noreferrer">
+                  Open in Spotify
+                </a>
+              </p>
             </article>
           ))}
         </div>
@@ -533,7 +581,7 @@ export default function App() {
       {myDeleted.length > 0 && (
         <section className="card deleted">
           <h2>Your deleted playlists</h2>
-          <p className="lede">Only you can see these. Restoring puts the songs back in the master playlist.</p>
+          <p className="lede">Only you can see these. Restoring puts the songs back in the Master Mix.</p>
           <ul className="deleted-list">
             {myDeleted.map((entry) => (
               <DeletedEntry key={entry.id} entry={entry} onChanged={onChanged} />

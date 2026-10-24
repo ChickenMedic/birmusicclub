@@ -55,13 +55,14 @@ a:hover {
   padding: 0 0 40px;
 }
 .eyebrow {
-  margin: 0 0 8px;
+  margin: 12px 0 0;
   color: var(--accent);
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.14em;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  display: inline-flex;
+  display: flex;
+  justify-content: center;
   align-items: center;
   gap: 12px;
 }
@@ -73,7 +74,7 @@ a:hover {
   font-weight: 500;
 }
 .embed-fallback {
-  margin-top: 10px;
+  margin-top: 18px;
 }
 
 /* Occasional disco light beams in the background, fanning down from the disco ball.
@@ -118,21 +119,20 @@ a:hover {
 /* Disco ball */
 .disco-wrap {
   position: relative;
-  display: inline-block;
-  margin: -8px 0 4px;
+  display: block;
+  width: 132px;
+  margin: -8px auto 6px;
   line-height: 0;
 }
 .disco {
-  filter: drop-shadow(0 0 24px rgba(29, 185, 84, 0.35)) drop-shadow(0 12px 18px rgba(0, 0, 0, 0.5));
-  animation: disco-sway 6s ease-in-out infinite;
-  transform-origin: 60px 0;
+  display: block;
+  filter: drop-shadow(0 0 26px rgba(29, 185, 84, 0.35)) drop-shadow(0 14px 20px rgba(0, 0, 0, 0.55));
+  animation: disco-sway 7s ease-in-out infinite;
+  transform-origin: 50% 0;
 }
-.disco-tiles {
-  animation: disco-spin 2.4s linear infinite;
-}
-@keyframes disco-spin {
-  from { transform: translateX(0); }
-  to { transform: translateX(-10px); }
+.disco polygon {
+  stroke: #10141a;
+  stroke-width: 0.35;
 }
 @keyframes disco-sway {
   0%, 100% { transform: rotate(-2deg); }
@@ -147,10 +147,10 @@ a:hover {
   animation: twinkle 2.8s ease-in-out infinite;
   text-shadow: 0 0 8px #fff, 0 0 14px rgba(29, 185, 84, 0.8);
 }
-.sparkle.s1 { left: -14px; top: 54px; animation-delay: 0s; }
-.sparkle.s2 { right: -16px; top: 72px; animation-delay: 0.9s; }
-.sparkle.s3 { left: 4px; top: 128px; animation-delay: 1.7s; font-size: 10px; }
-.sparkle.s4 { right: 2px; top: 30px; animation-delay: 2.3s; font-size: 10px; }
+.sparkle.s1 { left: -12px; top: 62px; animation-delay: 0s; }
+.sparkle.s2 { right: -14px; top: 82px; animation-delay: 0.9s; }
+.sparkle.s3 { left: 8px; top: 142px; animation-delay: 1.7s; font-size: 10px; }
+.sparkle.s4 { right: 6px; top: 38px; animation-delay: 2.3s; font-size: 10px; }
 @keyframes twinkle {
   0%, 100% { opacity: 0; transform: scale(0.4) rotate(0deg); }
   50% { opacity: 1; transform: scale(1) rotate(45deg); }
@@ -180,7 +180,7 @@ a:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .disco, .disco-tiles, .sparkle, .eq i { animation: none; }
+  .disco, .sparkle, .eq i { animation: none; }
   .sparkle { opacity: 0.8; }
   .lights { display: none; }
 }
@@ -190,8 +190,9 @@ a:hover {
 @media (max-width: 700px) {
   .lights { display: none; }
   .page { padding-top: 28px; }
-  .disco { width: 96px; height: 120px; animation: none; filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.5)); }
-  .disco-tiles, .sparkle, .eq i { animation: none; }
+  .disco-wrap { width: 104px; }
+  .disco { width: 104px; height: 130px; animation: none; filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.5)); }
+  .sparkle, .eq i { animation: none; }
   .sparkle { opacity: 0.7; }
   .eq i { height: 60%; }
   .card { padding: 16px; }
@@ -442,9 +443,20 @@ button.danger {
 button.danger:hover:not(:disabled) {
   background: #ff8080;
 }
+/* Always rendered (possibly empty) so every card header is the same height. */
 .owner-actions {
-  display: inline-flex;
-  gap: 2px;
+  display: flex;
+  gap: 14px;
+  min-height: 20px;
+  margin-top: 4px;
+}
+.owner-actions .link {
+  padding: 0;
+}
+.entry-foot {
+  margin: 12px 0 0;
+  font-size: 14px;
+  font-weight: 600;
 }
 .confirm {
   gap: 10px;
