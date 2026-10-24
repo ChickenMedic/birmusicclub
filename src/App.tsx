@@ -392,6 +392,14 @@ export default function App() {
 
   return (
     <div className="page">
+      <div className="lights" aria-hidden="true">
+        <span className="beam b1" />
+        <span className="beam b2" />
+        <span className="beam b3" />
+        <span className="beam b4" />
+        <span className="beam b5" />
+        <span className="beam b6" />
+      </div>
       <header className="hero">
         <DiscoBall />
         <p className="eyebrow">

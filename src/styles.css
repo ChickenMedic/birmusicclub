@@ -76,6 +76,45 @@ a:hover {
   margin-top: 10px;
 }
 
+/* Occasional disco light beams in the background, fanning down from the disco ball.
+   Each beam flashes briefly on its own long cycle so the page mostly stays calm. */
+.lights {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.beam {
+  position: absolute;
+  top: -6vh;
+  left: 50%;
+  width: 14vw;
+  min-width: 140px;
+  height: 150vh;
+  margin-left: -7vw;
+  transform-origin: 50% 0;
+  opacity: 0;
+  filter: blur(28px);
+  mix-blend-mode: screen;
+  background: linear-gradient(to bottom, var(--beam) 0%, transparent 75%);
+  animation: beam-flash var(--beam-cycle) ease-in-out infinite;
+  animation-delay: var(--beam-delay);
+}
+.b1 { --beam: rgba(29, 185, 84, 0.55);  --beam-cycle: 27s; --beam-delay: 2s;    transform: rotate(-32deg); }
+.b2 { --beam: rgba(255, 79, 216, 0.45); --beam-cycle: 33s; --beam-delay: 8s;    transform: rotate(24deg); }
+.b3 { --beam: rgba(84, 160, 255, 0.5);  --beam-cycle: 37s; --beam-delay: 14s;   transform: rotate(-10deg); }
+.b4 { --beam: rgba(255, 205, 80, 0.45); --beam-cycle: 41s; --beam-delay: 20s;   transform: rotate(40deg); }
+.b5 { --beam: rgba(80, 230, 230, 0.45); --beam-cycle: 31s; --beam-delay: 11s;   transform: rotate(-50deg); }
+.b6 { --beam: rgba(200, 120, 255, 0.45); --beam-cycle: 45s; --beam-delay: 25s;  transform: rotate(8deg); }
+@keyframes beam-flash {
+  0%, 100% { opacity: 0; }
+  4%  { opacity: 0.9; }
+  6%  { opacity: 0.25; }
+  8%  { opacity: 0.8; }
+  14% { opacity: 0; }
+}
+
 /* Disco ball */
 .disco-wrap {
   position: relative;
@@ -143,11 +182,13 @@ a:hover {
 @media (prefers-reduced-motion: reduce) {
   .disco, .disco-tiles, .sparkle, .eq i { animation: none; }
   .sparkle { opacity: 0.8; }
+  .lights { display: none; }
 }
 
 /* Phones: keep the decoration but drop the continuous animation and the glow filter,
    which cause constant repaints and janky scrolling on mobile browsers. */
 @media (max-width: 700px) {
+  .lights { display: none; }
   .page { padding-top: 28px; }
   .disco { width: 96px; height: 120px; animation: none; filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.5)); }
   .disco-tiles, .sparkle, .eq i { animation: none; }
