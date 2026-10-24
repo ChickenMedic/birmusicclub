@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { generateClient } from 'aws-amplify/data';
 import type { Schema } from '../amplify/data/resource';
-import { FOUNDERS, FOUNDER_MAX_TRACKS, MASTER_PLAYLIST_ID, MAX_TRACKS, SPOTIFY_OWNER_NAME } from '../config';
+import { isFounder, MASTER_PLAYLIST_ID, MAX_TRACKS, SPOTIFY_OWNER_NAME } from '../config';
 
 const client = generateClient<Schema>({ authMode: 'identityPool' });
 
@@ -51,6 +51,51 @@ async function manage(entry: EntryCard, action: Action, name?: string): Promise<
     deletedAt: data.deletedAt ?? null,
     claimed: data.claimed ?? false,
   };
+}
+
+function DiscoBall() {
+  return (
+    <div className="disco-wrap" aria-hidden="true">
+      <svg className="disco" viewBox="0 0 120 150" width="120" height="150">
+        <defs>
+          <pattern id="disco-tiles" width="10" height="10" patternUnits="userSpaceOnUse">
+            <rect width="9" height="9" fill="#d6dfe9" />
+            <rect x="0" y="0" width="4.5" height="4.5" fill="#f3f7fb" opacity="0.7" />
+          </pattern>
+          <radialGradient id="disco-shine" cx="35%" cy="28%" r="75%">
+            <stop offset="0" stopColor="#ffffff" stopOpacity="0.95" />
+            <stop offset="0.45" stopColor="#ffffff" stopOpacity="0" />
+            <stop offset="1" stopColor="#000000" stopOpacity="0.55" />
+          </radialGradient>
+          <clipPath id="disco-clip">
+            <circle cx="60" cy="90" r="54" />
+          </clipPath>
+        </defs>
+        <line x1="60" y1="0" x2="60" y2="36" stroke="#8d99a8" strokeWidth="2" />
+        <circle cx="60" cy="90" r="54" fill="#7d8794" />
+        <g clipPath="url(#disco-clip)">
+          <rect className="disco-tiles" x="-20" y="30" width="200" height="120" fill="url(#disco-tiles)" />
+        </g>
+        <circle cx="60" cy="90" r="54" fill="url(#disco-shine)" />
+        <circle cx="60" cy="90" r="54" fill="none" stroke="#5c6673" strokeWidth="2" />
+      </svg>
+      <span className="sparkle s1">✦</span>
+      <span className="sparkle s2">✦</span>
+      <span className="sparkle s3">✦</span>
+      <span className="sparkle s4">✦</span>
+    </div>
+  );
+}
+
+function Equalizer() {
+  return (
+    <span className="eq" aria-hidden="true">
+      <i />
+      <i />
+      <i />
+      <i />
+    </span>
+  );
 }
 
 function SpotifyEmbed({ playlistId, title, height }: { playlistId: string; title: string; height: number }) {
@@ -343,15 +388,26 @@ export default function App() {
 
   const active = entries?.filter((e) => !e.deletedAt) ?? null;
   const myDeleted = entries?.filter((e) => e.deletedAt && loadEditToken(e.id) !== null) ?? [];
+  const totalSongs = active?.reduce((sum, e) => sum + e.trackCount, 0) ?? 0;
 
   return (
     <div className="page">
       <header className="hero">
-        <p className="eyebrow">Office playlist exchange</p>
+        <DiscoBall />
+        <p className="eyebrow">
+          <Equalizer />
+          Office playlist exchange
+          <Equalizer />
+        </p>
         <h1>BIR Music Club</h1>
         <p className="tagline">
           Everyone picks {MAX_TRACKS} songs. They all land in one master playlist.
         </p>
+        {active && active.length > 0 && (
+          <p className="stats">
+            {active.length} playlist{active.length === 1 ? '' : 's'} · {totalSongs} song{totalSongs === 1 ? '' : 's'} in the mix
+          </p>
+        )}
       </header>
 
       <section className="card master">
@@ -372,8 +428,7 @@ export default function App() {
         </p>
         <ol className="steps">
           <li>
-            <strong>Make a playlist in Spotify</strong> with up to {MAX_TRACKS} songs. Founders {FOUNDERS.join(' and ')} get{' '}
-            {FOUNDER_MAX_TRACKS}.
+            <strong>Make a playlist in Spotify</strong> with up to {MAX_TRACKS} songs.
           </li>
           <li>
             <strong>Invite {SPOTIFY_OWNER_NAME} to it.</strong> Open the playlist, tap the three dots, choose{' '}
@@ -452,7 +507,7 @@ export default function App() {
         )}
         <div className="grid">
           {active?.map((entry) => (
-            <article className="card entry" key={entry.id}>
+            <article className={`card entry${isFounder(entry.name) ? ' founder' : ''}`} key={entry.id}>
               <EntryHeader entry={entry} onChanged={onChanged} />
               <SpotifyEmbed playlistId={entry.playlistId} title={`${entry.name}'s playlist`} height={352} />
             </article>
