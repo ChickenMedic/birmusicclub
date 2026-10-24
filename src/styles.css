@@ -90,24 +90,28 @@ a:hover {
   position: absolute;
   top: -6vh;
   left: 50%;
-  width: 14vw;
-  min-width: 140px;
-  height: 150vh;
-  margin-left: -7vw;
+  width: var(--w, 14vw);
+  min-width: 120px;
+  height: var(--h, 150vh);
+  margin-left: calc(var(--w, 14vw) / -2);
   transform-origin: 50% 0;
   opacity: 0;
   filter: blur(28px);
   mix-blend-mode: screen;
-  background: linear-gradient(to bottom, var(--beam) 0%, transparent 75%);
+  background: linear-gradient(to bottom, var(--beam) 0%, transparent 78%);
   animation: beam-flash var(--beam-cycle) ease-in-out infinite;
   animation-delay: var(--beam-delay);
 }
-.b1 { --beam: rgba(29, 185, 84, 0.55);  --beam-cycle: 27s; --beam-delay: 2s;    transform: rotate(-32deg); }
-.b2 { --beam: rgba(255, 79, 216, 0.45); --beam-cycle: 33s; --beam-delay: 8s;    transform: rotate(24deg); }
-.b3 { --beam: rgba(84, 160, 255, 0.5);  --beam-cycle: 37s; --beam-delay: 14s;   transform: rotate(-10deg); }
-.b4 { --beam: rgba(255, 205, 80, 0.45); --beam-cycle: 41s; --beam-delay: 20s;   transform: rotate(40deg); }
-.b5 { --beam: rgba(80, 230, 230, 0.45); --beam-cycle: 31s; --beam-delay: 11s;   transform: rotate(-50deg); }
-.b6 { --beam: rgba(200, 120, 255, 0.45); --beam-cycle: 45s; --beam-delay: 25s;  transform: rotate(8deg); }
+.b1  { --beam: rgba(29, 185, 84, 0.55);   --w: 14vw; --h: 150vh; --beam-cycle: 19s; --beam-delay: 1s;    transform: rotate(-32deg); }
+.b2  { --beam: rgba(255, 79, 216, 0.45);  --w: 20vw; --h: 120vh; --beam-cycle: 23s; --beam-delay: 5s;    transform: rotate(24deg); }
+.b3  { --beam: rgba(84, 160, 255, 0.5);   --w: 9vw;  --h: 160vh; --beam-cycle: 27s; --beam-delay: 9s;    transform: rotate(-10deg); }
+.b4  { --beam: rgba(255, 205, 80, 0.45);  --w: 16vw; --h: 110vh; --beam-cycle: 31s; --beam-delay: 13s;   transform: rotate(40deg); }
+.b5  { --beam: rgba(80, 230, 230, 0.45);  --w: 11vw; --h: 140vh; --beam-cycle: 21s; --beam-delay: 7s;    transform: rotate(-50deg); }
+.b6  { --beam: rgba(200, 120, 255, 0.45); --w: 24vw; --h: 100vh; --beam-cycle: 35s; --beam-delay: 17s;   transform: rotate(8deg); }
+.b7  { --beam: rgba(255, 120, 70, 0.4);   --w: 7vw;  --h: 170vh; --beam-cycle: 25s; --beam-delay: 3s;    transform: rotate(-62deg); }
+.b8  { --beam: rgba(120, 255, 180, 0.4);  --w: 18vw; --h: 130vh; --beam-cycle: 29s; --beam-delay: 11s;   transform: rotate(56deg); }
+.b9  { --beam: rgba(255, 255, 255, 0.35); --w: 6vw;  --h: 160vh; --beam-cycle: 33s; --beam-delay: 15s;   transform: rotate(-20deg); }
+.b10 { --beam: rgba(255, 90, 140, 0.4);   --w: 13vw; --h: 125vh; --beam-cycle: 22s; --beam-delay: 19s;   transform: rotate(32deg); }
 @keyframes beam-flash {
   0%, 100% { opacity: 0; }
   4%  { opacity: 0.9; }
@@ -133,6 +137,45 @@ a:hover {
 .disco polygon {
   stroke: #10141a;
   stroke-width: 0.35;
+}
+
+/* Spotlight-on-the-mirror-ball burst: thin rays fan out from the ball's centre,
+   a few seconds every ~40s, drifting slightly while lit. */
+.rays {
+  position: absolute;
+  left: 50%;
+  top: 99px; /* ball centre: svg cy 90 scaled to the 165px-tall render */
+  width: 0;
+  height: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0;
+  animation: rays-burst 43s linear infinite;
+  animation-delay: 6s;
+}
+.ray {
+  position: absolute;
+  left: -2.5px;
+  top: 0;
+  width: 5px;
+  height: var(--len);
+  transform-origin: 50% 0;
+  transform: rotate(var(--a));
+  border-radius: 3px;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 1) 0%, var(--c) 30%, transparent 100%);
+  filter: blur(1.5px);
+  mix-blend-mode: screen;
+}
+.ray:nth-child(even) { width: 3px; left: -1.5px; }
+@keyframes rays-burst {
+  0%, 100% { opacity: 0; transform: rotate(0deg); }
+  9%   { opacity: 0; }
+  10%  { opacity: 1; }
+  11%  { opacity: 0.5; }
+  12%  { opacity: 1; }
+  15%  { opacity: 0.85; }
+  19%  { opacity: 0; transform: rotate(10deg); }
+  100% { transform: rotate(10deg); }
 }
 @keyframes disco-sway {
   0%, 100% { transform: rotate(-2deg); }
@@ -182,13 +225,13 @@ a:hover {
 @media (prefers-reduced-motion: reduce) {
   .disco, .sparkle, .eq i { animation: none; }
   .sparkle { opacity: 0.8; }
-  .lights { display: none; }
+  .lights, .rays { display: none; }
 }
 
 /* Phones: keep the decoration but drop the continuous animation and the glow filter,
    which cause constant repaints and janky scrolling on mobile browsers. */
 @media (max-width: 700px) {
-  .lights { display: none; }
+  .lights, .rays { display: none; }
   .page { padding-top: 28px; }
   .disco-wrap { width: 104px; }
   .disco { width: 104px; height: 130px; animation: none; filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.5)); }

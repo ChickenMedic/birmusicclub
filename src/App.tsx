@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type CSSProperties, type FormEvent } from 'react';
 import { generateClient } from 'aws-amplify/data';
 import type { Schema } from '../amplify/data/resource';
 import { isFounder, MASTER_PLAYLIST_ID, MAX_TRACKS, SPOTIFY_OWNER_NAME } from '../config';
@@ -94,6 +94,24 @@ function sphereTiles(offsetDeg: number) {
   return tiles;
 }
 
+// Thin rays that burst out of the ball now and then, as if a spotlight just caught it.
+const RAYS: { a: number; len: string; c: string }[] = [
+  { a: -160, len: '46vh', c: 'rgba(255,255,255,0.7)' },
+  { a: -135, len: '62vh', c: 'rgba(29,185,84,0.8)' },
+  { a: -112, len: '38vh', c: 'rgba(255,255,255,0.55)' },
+  { a: -88, len: '70vh', c: 'rgba(255,205,80,0.75)' },
+  { a: -62, len: '44vh', c: 'rgba(80,230,230,0.7)' },
+  { a: -35, len: '66vh', c: 'rgba(255,255,255,0.65)' },
+  { a: -12, len: '40vh', c: 'rgba(255,79,216,0.7)' },
+  { a: 14, len: '58vh', c: 'rgba(255,255,255,0.6)' },
+  { a: 38, len: '48vh', c: 'rgba(84,160,255,0.75)' },
+  { a: 64, len: '72vh', c: 'rgba(255,255,255,0.7)' },
+  { a: 92, len: '42vh', c: 'rgba(29,185,84,0.7)' },
+  { a: 118, len: '60vh', c: 'rgba(255,205,80,0.65)' },
+  { a: 142, len: '36vh', c: 'rgba(200,120,255,0.7)' },
+  { a: 170, len: '54vh', c: 'rgba(255,255,255,0.6)' },
+];
+
 function DiscoBall() {
   const [offset, setOffset] = useState(0);
   useEffect(() => {
@@ -106,6 +124,11 @@ function DiscoBall() {
   const { cx, cy, r } = BALL;
   return (
     <div className="disco-wrap" aria-hidden="true">
+      <div className="rays">
+        {RAYS.map((ray, i) => (
+          <span key={i} className="ray" style={{ '--a': `${ray.a}deg`, '--len': ray.len, '--c': ray.c } as CSSProperties} />
+        ))}
+      </div>
       <svg className="disco" viewBox="0 0 120 150" width="132" height="165">
         <defs>
           <radialGradient id="disco-shine" cx="36%" cy="30%" r="70%">
@@ -442,6 +465,10 @@ export default function App() {
         <span className="beam b4" />
         <span className="beam b5" />
         <span className="beam b6" />
+        <span className="beam b7" />
+        <span className="beam b8" />
+        <span className="beam b9" />
+        <span className="beam b10" />
       </div>
       <header className="hero">
         <DiscoBall />
