@@ -275,6 +275,10 @@ a:hover {
 .entries {
   margin-top: 28px;
 }
+/* Grid cards are spaced by the grid gap, not by the section rule above. */
+.grid > .card {
+  margin-top: 0;
+}
 
 .card-head {
   display: flex;
