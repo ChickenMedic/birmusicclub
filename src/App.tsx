@@ -403,11 +403,11 @@ export default function App() {
         <p className="tagline">
           Everyone picks {MAX_TRACKS} songs. They all land in one master playlist.
         </p>
-        {active && active.length > 0 && (
-          <p className="stats">
-            {active.length} playlist{active.length === 1 ? '' : 's'} · {totalSongs} song{totalSongs === 1 ? '' : 's'} in the mix
-          </p>
-        )}
+        <p className="stats">
+          {active && active.length > 0
+            ? `${active.length} playlist${active.length === 1 ? '' : 's'} · ${totalSongs} song${totalSongs === 1 ? '' : 's'} in the mix`
+            : ' '}
+        </p>
       </header>
 
       <section className="card master">
@@ -418,6 +418,13 @@ export default function App() {
           </a>
         </div>
         <SpotifyEmbed playlistId={MASTER_PLAYLIST_ID} title="BIR Music Club master playlist" height={380} />
+        <p className="hint embed-fallback">
+          Player not loading?{' '}
+          <a href={`https://open.spotify.com/playlist/${MASTER_PLAYLIST_ID}`} target="_blank" rel="noreferrer">
+            Open the master playlist in Spotify
+          </a>
+          .
+        </p>
       </section>
 
       <section className="card submit" id="submit">

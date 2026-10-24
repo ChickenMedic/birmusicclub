@@ -21,6 +21,7 @@
 
 html {
   color-scheme: dark;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
@@ -66,9 +67,13 @@ a:hover {
 }
 .stats {
   margin: 14px 0 0;
+  min-height: 21px;
   color: var(--muted);
   font-size: 14px;
   font-weight: 500;
+}
+.embed-fallback {
+  margin-top: 10px;
 }
 
 /* Disco ball */
@@ -138,6 +143,27 @@ a:hover {
 @media (prefers-reduced-motion: reduce) {
   .disco, .disco-tiles, .sparkle, .eq i { animation: none; }
   .sparkle { opacity: 0.8; }
+}
+
+/* Phones: keep the decoration but drop the continuous animation and the glow filter,
+   which cause constant repaints and janky scrolling on mobile browsers. */
+@media (max-width: 700px) {
+  .page { padding-top: 28px; }
+  .disco { width: 96px; height: 120px; animation: none; filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.5)); }
+  .disco-tiles, .sparkle, .eq i { animation: none; }
+  .sparkle { opacity: 0.7; }
+  .eq i { height: 60%; }
+  .card { padding: 16px; }
+  .card-head a {
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+}
+@media (hover: none) {
+  .entry:hover { transform: none; }
 }
 .hero h1 {
   margin: 0;
@@ -256,7 +282,10 @@ input:not([type='checkbox']) {
   border-radius: 10px;
   color: var(--text);
   font: inherit;
-  font-size: 15px;
+  /* 16px minimum: anything smaller makes iOS Safari zoom the page when the field is focused. */
+  font-size: 16px;
+  appearance: none;
+  -webkit-appearance: none;
 }
 input:not([type='checkbox']):focus {
   outline: none;
