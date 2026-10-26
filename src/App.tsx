@@ -472,10 +472,10 @@ export default function App() {
       </div>
       <header className="hero">
         <DiscoBall />
-        <h1>BIR Music Club</h1>
+        <h1>BIR Master Mix</h1>
         <p className="eyebrow">
           <Equalizer />
-          BIR Master Mix
+          BIR Music Club
           <Equalizer />
         </p>
         <p className="tagline">

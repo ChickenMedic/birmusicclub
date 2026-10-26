@@ -1,6 +1,6 @@
 // Shared by the frontend and the Lambdas. Nothing here is secret.
 
-// The "BIR Music Club" playlist on Sam's Spotify account that every submission is appended to.
+// The "BIR Master Mix" playlist on Sam's Spotify account that every submission is appended to.
 export const MASTER_PLAYLIST_ID = '0t6ow4TnTqHTd4RJYrGYsV';
 
 // Spotify only lets this app read playlists its account owns or collaborates on, so coworkers

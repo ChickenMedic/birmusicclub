@@ -1,4 +1,4 @@
-# BIR Music Club
+# BIR Master Mix
 
 Coworkers share Spotify playlists (max 11 songs each) and the songs get added to a master playlist. See PLAN.md.
 
