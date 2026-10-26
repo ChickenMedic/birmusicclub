@@ -4,6 +4,7 @@
 //
 //   npm run resync-master              # dry run: report what would change
 //   npm run resync-master -- --apply   # remove orphans and duplicates, add missing
+//   npm run resync-master -- --apply --shuffle   # rebuild the whole playlist in random order
 //
 // Reads entries from the live site's public API as a guest (same as the browser does) and
 // each entry's playlist from Spotify with the credentials in .env.
@@ -20,6 +21,7 @@ import { addableUris, addToMasterPlaylist, fetchPlaylistItems, refreshSpotifyTok
 
 const SITE = 'https://birmastermix.com';
 const apply = process.argv.includes('--apply');
+const shuffle = process.argv.includes('--shuffle');
 
 try {
   process.loadEnvFile('.env');
@@ -67,6 +69,14 @@ for (const uri of missing) console.log(`  + ${uri}  (${wanted.get(uri)!.join(', 
 
 if (!apply) {
   console.log('\nDry run. Re-run with --apply to make these changes.');
+} else if (shuffle) {
+  // Replace the playlist wholesale with every wanted song in random order. This fixes orphans,
+  // duplicates and missing songs at the same time.
+  const order = shuffled([...wanted.keys()]);
+  await replaceMasterPlaylist(token, order);
+  const after = await fetchAllMasterUris(token);
+  console.log(`
+Done: playlist rebuilt in random order. Master now has ${after.length} rows, ${new Set(after).size} unique.`);
 } else {
   const toRemove = [...orphans, ...duplicated];
   const toAdd = [...duplicated, ...missing];
@@ -74,6 +84,26 @@ if (!apply) {
   if (toAdd.length > 0) await addToMasterPlaylist(token, toAdd);
   const after = await fetchAllMasterUris(token);
   console.log(`\nDone: removed ${toRemove.length} songs (all copies), added ${toAdd.length}. Master now has ${after.length} rows, ${new Set(after).size} unique.`);
+}
+
+function shuffled<T>(items: T[]): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+// PUT replaces the playlist's contents with up to 100 songs; the rest are appended.
+async function replaceMasterPlaylist(accessToken: string, uris: string[]): Promise<void> {
+  const res = await spotifyFetch(`https://api.spotify.com/v1/playlists/${MASTER_PLAYLIST_ID}/items`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ uris: uris.slice(0, 100) }),
+  });
+  if (!res.ok) throw new Error(`Replace failed: ${res.status} ${await res.text()}`);
+  if (uris.length > 100) await addToMasterPlaylist(accessToken, uris.slice(100));
 }
 
 async function fetchAllMasterUris(accessToken: string): Promise<string[]> {
