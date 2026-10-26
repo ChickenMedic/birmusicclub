@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit && tsc --noEmit -p amplify",
-    "get-refresh-token": "node scripts/get-refresh-token.ts"
+    "get-refresh-token": "node scripts/get-refresh-token.ts",
+    "resync-master": "tsx scripts/resync-master.ts"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1156.0",

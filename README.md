@@ -43,4 +43,6 @@ The shared password from the original plan is not implemented yet (deferred by S
 npm install
 npm run typecheck          # frontend + amplify backend
 npm run get-refresh-token  # one-time; prints the consent URL, then run again with the redirect URL
+npm run resync-master      # dry run: compare the master playlist with active entries
+npm run resync-master -- --apply  # remove orphan/duplicate songs, add missing ones
 ```
