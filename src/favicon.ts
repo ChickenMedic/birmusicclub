@@ -1,5 +1,5 @@
 // Animated favicon: every couple of seconds the tab icon becomes a different music-themed
-// symbol in a different colour. Browsers that ignore dynamic favicons (Safari) keep the
+// symbol in a different colour, on a transparent background. Browsers that ignore dynamic favicons (Safari) keep the
 // static /favicon.svg.
 
 const COLORS = ['#1db954', '#ff4fa3', '#4f8dff', '#b06cff', '#ffd93d', '#ff7a3d', '#3de0ff', '#ff5c5c'];
@@ -19,24 +19,25 @@ const ICONS: Array<(c: string) => string> = [
     ${[...Array(5)].map((_, i) => `<line x1="${14 + i * 9}" y1="11" x2="${14 + i * 9}" y2="59" stroke="#2a2f3a" stroke-width="1.5"/>`).join('')}
     <circle cx="32" cy="35" r="24" fill="none" stroke="${c}" stroke-width="3"/><circle cx="23" cy="26" r="5" fill="#fff" opacity="0.8"/>`,
   // vinyl record
-  (c) => `<circle cx="32" cy="32" r="28" fill="#111"/><circle cx="32" cy="32" r="22" fill="none" stroke="#333" stroke-width="1.5"/>
-    <circle cx="32" cy="32" r="16" fill="none" stroke="#333" stroke-width="1.5"/><circle cx="32" cy="32" r="9" fill="${c}"/><circle cx="32" cy="32" r="2" fill="#111"/>`,
+  (c) => `<circle cx="32" cy="32" r="28" fill="${c}"/><circle cx="32" cy="32" r="22" fill="none" stroke="#000" stroke-opacity="0.3" stroke-width="1.5"/>
+    <circle cx="32" cy="32" r="16" fill="none" stroke="#000" stroke-opacity="0.3" stroke-width="1.5"/><circle cx="32" cy="32" r="9" fill="#fff"/><circle cx="32" cy="32" r="2" fill="${c}"/>`,
   // headphones
   (c) => `<path d="M12 40 V32 A20 20 0 0 1 52 32 V40" fill="none" stroke="${c}" stroke-width="6" stroke-linecap="round"/>
     <rect x="8" y="36" width="12" height="20" rx="5" fill="${c}"/><rect x="44" y="36" width="12" height="20" rx="5" fill="${c}"/>`,
-  // star
-  (c) => `<polygon points="32,4 40,24 61,25 44,38 50,59 32,47 14,59 20,38 3,25 24,24" fill="${c}"/>`,
-  // heart
-  (c) => `<path d="M32 56 C 10 40, 4 28, 10 18 C 16 8, 28 10, 32 20 C 36 10, 48 8, 54 18 C 60 28, 54 40, 32 56 Z" fill="${c}"/>`,
-  // lightning bolt
-  (c) => `<polygon points="36,2 12,36 30,36 26,62 52,26 34,26" fill="${c}"/>`,
+  // microphone
+  (c) => `<rect x="22" y="4" width="20" height="34" rx="10" fill="${c}"/>
+    <path d="M14 30 A18 18 0 0 0 50 30" fill="none" stroke="${c}" stroke-width="5" stroke-linecap="round"/>
+    <rect x="29" y="46" width="6" height="10" fill="${c}"/><rect x="20" y="56" width="24" height="5" rx="2.5" fill="${c}"/>`,
+  // speaker
+  (c) => `<rect x="14" y="4" width="36" height="56" rx="6" fill="${c}"/><circle cx="32" cy="18" r="6" fill="#000" fill-opacity="0.35"/>
+    <circle cx="32" cy="42" r="13" fill="#000" fill-opacity="0.35"/><circle cx="32" cy="42" r="5" fill="${c}"/>`,
   // equalizer bars
   (c) => `<rect x="8" y="30" width="8" height="28" rx="3" fill="${c}"/><rect x="20" y="14" width="8" height="44" rx="3" fill="${c}"/>
     <rect x="32" y="24" width="8" height="34" rx="3" fill="${c}"/><rect x="44" y="6" width="8" height="52" rx="3" fill="${c}"/>`,
 ];
 
 function svg(icon: (c: string) => string, color: string): string {
-  const body = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#14141c"/>${icon(color)}</svg>`;
+  const body = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">${icon(color)}</svg>`;
   return `data:image/svg+xml,${encodeURIComponent(body)}`;
 }
 
