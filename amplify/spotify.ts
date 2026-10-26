@@ -5,11 +5,23 @@ import { MASTER_PLAYLIST_ID, SPOTIFY_OWNER_NAME } from '../config';
 const SPOTIFY_RETRY_BUDGET_MS = 20_000;
 const MAX_ITEMS_PER_REQUEST = 100;
 
+// Amplify resolves secret() values from SSM Parameter Store when the function starts. If a
+// parameter is missing it leaves this placeholder in the env var instead of failing, so treat it
+// as unset and say which secrets are missing rather than sending garbage to Spotify.
+const SSM_PLACEHOLDER = '<value will be resolved during runtime>';
+
+function readSecrets(names: string[]): string[] {
+  const values = names.map((n) => process.env[n]?.trim());
+  const missing = names.filter((_, i) => !values[i] || values[i] === SSM_PLACEHOLDER);
+  if (missing.length > 0) {
+    console.error('Spotify secrets missing from SSM', missing, 'config:', process.env.AMPLIFY_SSM_ENV_CONFIG);
+    throw new Error(`Server misconfiguration: Spotify secrets not found in Amplify (${missing.join(', ')}). Add them under Hosting > Secrets for this app and branch, then redeploy.`);
+  }
+  return values as string[];
+}
+
 export async function refreshSpotifyToken(): Promise<string> {
-  const clientId = process.env.SPOTIFY_CLIENT_ID;
-  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
-  const refreshToken = process.env.SPOTIFY_REFRESH_TOKEN;
-  if (!clientId || !clientSecret || !refreshToken) throw new Error('Server misconfiguration: Spotify secrets are not set.');
+  const [clientId, clientSecret, refreshToken] = readSecrets(['SPOTIFY_CLIENT_ID', 'SPOTIFY_CLIENT_SECRET', 'SPOTIFY_REFRESH_TOKEN']);
 
   const res = await spotifyFetch('https://accounts.spotify.com/api/token', {
     method: 'POST',
