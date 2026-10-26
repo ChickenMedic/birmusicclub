@@ -5,7 +5,7 @@ Coworkers share Spotify playlists (max 11 songs each) and the songs get added to
 ## Stack
 
 - Amplify Gen 2 (TypeScript) on AWS: AppSync data API over DynamoDB, Lambdas, SES, EventBridge.
-- Vite + React frontend hosted on Amplify Hosting at https://birmusicclub.com.
+- Vite + React frontend hosted on Amplify Hosting at https://birmastermix.com (formerly birmusicclub.com).
 - Public site reads the `Entry` model as a guest through the Cognito identity pool. Nobody signs in; the user pool is admin-create-only.
 - Entries are created by the `submitPlaylist` mutation (`amplify/submit-playlist/handler.ts`). It returns a per-entry `editToken` that the submitting browser keeps in localStorage.
 - `manageEntry` (`amplify/manage-entry/handler.ts`) renames, soft-deletes or restores an entry when given that token. Delete removes the entry's songs from the master playlist and restore adds them back, skipping any song another active entry also contributed. Deleted entries keep their record (`deletedAt`) so restore is trivial.
@@ -24,6 +24,8 @@ The Spotify app is in development mode. It can only read the contents of playlis
 | `SPOTIFY_CLIENT_ID`     | `SPOTIFY_CLIENT_ID` from the local `.env`     |
 | `SPOTIFY_CLIENT_SECRET` | `SPOTIFY_CLIENT_SECRET` from the local `.env` |
 | `SPOTIFY_REFRESH_TOKEN` | `SPOTIFY_REFRESH_TOKEN` from the local `.env` |
+
+These must be **Secrets**, not Environment variables, and must be on the same Amplify app and branch that serves the site. If a secret is missing, Amplify leaves the text `<value will be resolved during runtime>` in the env var; the Lambdas detect that and name the missing secrets in the error. After adding or changing a secret, redeploy the branch.
 
 The shared password from the original plan is not implemented yet (deferred by Sam). Rate limiting is in place.
 
