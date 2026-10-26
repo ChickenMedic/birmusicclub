@@ -45,4 +45,5 @@ npm run typecheck          # frontend + amplify backend
 npm run get-refresh-token  # one-time; prints the consent URL, then run again with the redirect URL
 npm run resync-master      # dry run: compare the master playlist with active entries
 npm run resync-master -- --apply  # remove orphan/duplicate songs, add missing ones
+npm run resync-master -- --apply --shuffle  # rebuild the master playlist in random order
 ```
