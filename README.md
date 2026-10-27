@@ -35,7 +35,7 @@ The shared password from the original plan is not implemented yet (deferred by S
 2. Email is optional and only collected (and validated) when the digest box is ticked.
 3. Parse the playlist ID from the pasted link, refresh the Spotify access token, read the playlist.
 3. Reject if unreadable (not a collaborator), empty, or over 11 songs. Spotify 429s are retried honouring Retry-After within a 20 second budget.
-4. Add the songs to the master playlist, then save the entry.
+4. Insert each song at a random position in the master playlist (so it stays shuffled as it grows), then save the entry.
 
 ## Local commands
 

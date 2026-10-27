@@ -473,11 +473,6 @@ export default function App() {
       <header className="hero">
         <DiscoBall />
         <h1>BIR Master Mix</h1>
-        <p className="eyebrow">
-          <Equalizer />
-          BIR Music Club
-          <Equalizer />
-        </p>
         <p className="tagline">
           Everyone picks {MAX_TRACKS} songs. They all land in one Master Mix.
         </p>
@@ -490,11 +485,19 @@ export default function App() {
 
       <section className="card master">
         <div className="card-head">
-          <h2>The Master Mix</h2>
+          <h2 className="with-eq">
+            <Equalizer />
+            The Master Mix
+            <Equalizer />
+          </h2>
           <a href={`https://open.spotify.com/playlist/${MASTER_PLAYLIST_ID}`} target="_blank" rel="noreferrer">
             Open in Spotify
           </a>
         </div>
+        <p className="hint">
+          Sign in to Spotify in this browser to see the full mix in the player. On phones the player can be flaky, so if it
+          misbehaves use <em>Open in Spotify</em> instead.
+        </p>
         <SpotifyEmbed playlistId={MASTER_PLAYLIST_ID} title="BIR Master Mix" height={720} />
         <p className="hint embed-fallback">
           Player not loading?{' '}
@@ -508,23 +511,26 @@ export default function App() {
       <section className="card submit" id="submit">
         <h2>Add your playlist</h2>
         <p className="lede">
-          Pick up to {MAX_TRACKS} songs. Your playlist gets its own card below, and the songs are added to the Master Mix
-          automatically.
+          Pick up to {MAX_TRACKS} songs and paste your playlist link below. This site reads the playlist, gives it a card
+          further down, and drops each song into a random spot in the Master Mix. You never add anything to the Master Mix
+          yourself.
         </p>
         <ol className="steps">
           <li>
             <strong>Make a playlist in Spotify</strong> with up to {MAX_TRACKS} songs.
           </li>
           <li>
-            <strong>Invite {SPOTIFY_OWNER_NAME} to it.</strong> Open the playlist, tap the three dots, choose{' '}
-            <em>Invite collaborators</em>, and send the invite link to Sam. Spotify only lets this site read playlists
-            it has been invited to. It is a one-time thing per playlist, and nobody else can edit yours.
+            <strong>Let the site read it.</strong> Spotify only lets this site open playlists it has been invited to, so
+            open yours, tap the three dots, choose <em>Invite collaborators</em>, and send the invite link to Sam (
+            {SPOTIFY_OWNER_NAME} on Spotify). This is a one-time step per playlist, nobody else can edit your playlist,
+            and on its own it does not put anything in the Master Mix.
             <div className="copy-row">
               <CopyName />
             </div>
           </li>
           <li>
-            <strong>Paste the link below.</strong> Tap <em>Share</em>, then <em>Copy link to playlist</em>.
+            <strong>Paste the link below and hit Add.</strong> Tap <em>Share</em>, then <em>Copy link to playlist</em>.
+            This step is what puts your songs in the Master Mix.
           </li>
         </ol>
         <form onSubmit={onSubmit}>

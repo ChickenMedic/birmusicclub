@@ -69,18 +69,34 @@ export function addableUris(items: PlaylistItems): string[] {
     .map((i) => i.item!.uri);
 }
 
+// Each song is inserted at a random position so the master playlist stays shuffled as it grows,
+// instead of new submissions piling up at the end.
 export async function addToMasterPlaylist(accessToken: string, uris: string[]): Promise<void> {
-  for (const chunk of chunks(uris)) {
+  let total = await masterPlaylistLength(accessToken);
+  for (const uri of uris) {
+    const position = Math.floor(Math.random() * (total + 1));
     const res = await spotifyFetch(`https://api.spotify.com/v1/playlists/${MASTER_PLAYLIST_ID}/items`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uris: chunk }),
+      body: JSON.stringify({ uris: [uri], position }),
     });
     if (!res.ok) {
       console.error('Spotify add to master playlist failed', res.status, await res.text());
       throw new Error('Spotify returned an error while adding songs to the master playlist. Try again in a minute.');
     }
+    total++;
   }
+}
+
+async function masterPlaylistLength(accessToken: string): Promise<number> {
+  const res = await spotifyFetch(`https://api.spotify.com/v1/playlists/${MASTER_PLAYLIST_ID}/items?limit=1&fields=total`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    console.error('Spotify master playlist length failed', res.status, await res.text());
+    throw new Error('Spotify returned an error while reading the master playlist. Try again in a minute.');
+  }
+  return ((await res.json()) as { total: number }).total;
 }
 
 export async function removeFromMasterPlaylist(accessToken: string, uris: string[]): Promise<void> {

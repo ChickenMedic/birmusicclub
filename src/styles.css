@@ -199,12 +199,17 @@ a:hover {
   50% { opacity: 1; transform: scale(1) rotate(45deg); }
 }
 
-/* Equalizer bars in the eyebrow */
+/* Equalizer bars beside the Master Mix heading */
+.with-eq {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
 .eq {
   display: inline-flex;
   align-items: flex-end;
   gap: 2px;
-  height: 14px;
+  height: 18px;
 }
 .eq i {
   display: block;
