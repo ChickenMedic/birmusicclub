@@ -93,6 +93,21 @@ a:hover {
   font-style: normal;
   font-weight: 600;
 }
+/* The one button that reveals the two how-to cards */
+.add-cta {
+  margin-top: 28px;
+  text-align: center;
+}
+button.big {
+  justify-self: center;
+  padding: 16px 36px;
+  font-size: 18px;
+  box-shadow: 0 10px 30px rgba(29, 185, 84, 0.25);
+}
+.add-cta + .card {
+  margin-top: 20px;
+}
+
 /* Links styled as buttons */
 .btn {
   display: inline-block;
