@@ -289,7 +289,7 @@ function PendingNote({ entry, onChanged }: { entry: EntryCard; onChanged: (updat
     <div className="pending">
       <p>
         <strong>Not in the Master Mix yet.</strong>{' '}
-        {entry.syncError ?? 'Waiting for Sam to open your invite link. Checked every 10 minutes.'}
+        {entry.syncError ?? 'Once Sam opens your invite link, your songs will be added.'}
       </p>
       <button type="button" className="small ghost" onClick={check} disabled={checking}>
         {checking ? 'Checking…' : 'Check now'}
@@ -621,8 +621,7 @@ export default function App() {
             <strong>Send the link to Sam</strong> on Teams or by email.
           </li>
           <li>
-            <strong>Done.</strong> Once Sam opens it your songs are added within 10 minutes, or hit <em>Check now</em> on
-            your card.
+            <strong>Done.</strong> Once Sam opens the invite, your music is added to the Master Mix.
           </li>
         </ol>
       </section>
