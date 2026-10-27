@@ -45,6 +45,8 @@ function writeStorage(key: string, value: string | null) {
 const loadEditToken = (id: string) => readStorage(editKey(id));
 const saveEditToken = (id: string, token: string) => writeStorage(editKey(id), token);
 const loadAdminKey = () => readStorage(ADMIN_KEY);
+// Entries from before syncedAt existed have a song count but no timestamp; they are in the mix.
+const inMix = (entry: EntryCard) => entry.syncedAt !== null || entry.trackCount > 0;
 // The token to send for delete/restore: the entry's own, or the admin key.
 const manageToken = (id: string) => loadEditToken(id) ?? loadAdminKey();
 const canManage = (id: string) => manageToken(id) !== null;
@@ -407,7 +409,7 @@ function EntryHeader({ entry, onChanged }: { entry: EntryCard; onChanged: (updat
     <div className="entry-head">
       <h3>{entry.name}</h3>
       <p className="meta">
-        {entry.syncedAt ? `${entry.trackCount} song${entry.trackCount === 1 ? '' : 's'} · ` : ''}
+        {inMix(entry) ? `${entry.trackCount} song${entry.trackCount === 1 ? '' : 's'} · ` : ''}
         {dateFormat.format(new Date(entry.addedAt))}
       </p>
       <div className="owner-actions">
@@ -425,7 +427,7 @@ function EntryHeader({ entry, onChanged }: { entry: EntryCard; onChanged: (updat
           </button>
         )}
       </div>
-      {!entry.syncedAt && <PendingNote entry={entry} onChanged={onChanged} />}
+      {!inMix(entry) && <PendingNote entry={entry} onChanged={onChanged} />}
     </div>
   );
 }
@@ -541,7 +543,7 @@ export default function App() {
 
   const active = entries?.filter((e) => !e.deletedAt) ?? null;
   const myDeleted = entries?.filter((e) => e.deletedAt && canManage(e.id)) ?? [];
-  const totalSongs = active?.reduce((sum, e) => sum + (e.syncedAt ? e.trackCount : 0), 0) ?? 0;
+  const totalSongs = active?.reduce((sum, e) => sum + (inMix(e) ? e.trackCount : 0), 0) ?? 0;
   const masterUrl = `https://open.spotify.com/playlist/${MASTER_PLAYLIST_ID}`;
 
   return (

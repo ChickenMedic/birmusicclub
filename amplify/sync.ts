@@ -11,6 +11,9 @@ export type SyncableEntry = {
   id: string;
   name: string;
   playlistId: string;
+  addedAt?: string;
+  trackCount?: number;
+  trackUris?: string[];
   syncedAt?: string;
   syncError?: string;
 };
@@ -30,6 +33,22 @@ export async function syncEntry(
   entry: SyncableEntry,
 ): Promise<SyncResult> {
   const now = new Date().toISOString();
+
+  // Entries from before syncedAt existed already have their songs in the master playlist
+  // (trackUris was recorded when they were added). Mark them synced; never re-add them.
+  if (!entry.syncedAt && entry.trackUris && entry.trackUris.length > 0) {
+    const syncedAt = entry.addedAt ?? now;
+    await ddb.send(
+      new UpdateCommand({
+        TableName: tableName,
+        Key: { id: entry.id },
+        UpdateExpression: 'SET syncedAt = :syncedAt, updatedAt = :now REMOVE syncError',
+        ExpressionAttributeValues: { ':syncedAt': syncedAt, ':now': now },
+      }),
+    );
+    return { status: 'synced', trackCount: entry.trackCount ?? entry.trackUris.length, trackUris: entry.trackUris, syncedAt };
+  }
+
   let outcome: SyncResult;
   try {
     const items = await fetchPlaylistItems(accessToken, entry.playlistId);

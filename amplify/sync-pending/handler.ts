@@ -17,7 +17,7 @@ export const handler = async (): Promise<void> => {
       new ScanCommand({
         TableName: tableName,
         FilterExpression: 'attribute_not_exists(syncedAt) AND attribute_not_exists(deletedAt)',
-        ProjectionExpression: 'id, #name, playlistId, syncError',
+        ProjectionExpression: 'id, #name, playlistId, addedAt, trackCount, trackUris, syncError',
         ExpressionAttributeNames: { '#name': 'name' },
         ExclusiveStartKey: startKey,
       }),
