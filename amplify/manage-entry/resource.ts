@@ -12,5 +12,7 @@ export const manageEntry = defineFunction({
     SPOTIFY_CLIENT_ID: secret('SPOTIFY_CLIENT_ID'),
     SPOTIFY_CLIENT_SECRET: secret('SPOTIFY_CLIENT_SECRET'),
     SPOTIFY_REFRESH_TOKEN: secret('SPOTIFY_REFRESH_TOKEN'),
+    // Optional. Lets the admin delete/restore any entry (entered once on the site's footer).
+    ADMIN_KEY: secret('ADMIN_KEY'),
   },
 });

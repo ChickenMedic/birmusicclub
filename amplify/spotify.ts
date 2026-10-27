@@ -10,6 +10,12 @@ const MAX_ITEMS_PER_REQUEST = 100;
 // as unset and say which secrets are missing rather than sending garbage to Spotify.
 const SSM_PLACEHOLDER = '<value will be resolved during runtime>';
 
+// An optional secret: undefined when it is not configured (or Amplify left its placeholder).
+export function readOptionalSecret(name: string): string | undefined {
+  const value = process.env[name]?.trim();
+  return value && value !== SSM_PLACEHOLDER ? value : undefined;
+}
+
 function readSecrets(names: string[]): string[] {
   const values = names.map((n) => process.env[n]?.trim());
   const missing = names.filter((_, i) => !values[i] || values[i] === SSM_PLACEHOLDER);
@@ -44,17 +50,24 @@ export type PlaylistItems = {
   items: Array<{ is_local: boolean; item: { uri: string; type: string } | null }>;
 };
 
+// Thrown when Spotify refuses to show us a playlist, which for this development-mode app means
+// its account has not been invited to collaborate on it yet.
+export class PlaylistUnreadableError extends Error {
+  constructor() {
+    super(
+      `Spotify won't let this site read that playlist yet. Open it in Spotify, tap the three dots, choose Invite collaborators, and send the invite link to ${SPOTIFY_OWNER_NAME}.`,
+    );
+    this.name = 'PlaylistUnreadableError';
+  }
+}
+
 // Reads a playlist's items. Only works for playlists the app's account owns or collaborates on.
 export async function fetchPlaylistItems(accessToken: string, playlistId: string): Promise<PlaylistItems> {
   const params = new URLSearchParams({ fields: 'total,items(is_local,item(uri,type))', limit: '50' });
   const res = await spotifyFetch(`https://api.spotify.com/v1/playlists/${playlistId}/items?${params}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  if (res.status === 403 || res.status === 404) {
-    throw new Error(
-      `Spotify won't let this site read that playlist yet. Open it in Spotify, tap the three dots, choose Invite collaborators, and send the invite link to ${SPOTIFY_OWNER_NAME}. Once accepted, try again.`,
-    );
-  }
+  if (res.status === 403 || res.status === 404) throw new PlaylistUnreadableError();
   if (!res.ok) {
     console.error('Spotify playlist fetch failed', res.status, await res.text());
     throw new Error('Spotify returned an error while reading that playlist. Try again in a minute.');

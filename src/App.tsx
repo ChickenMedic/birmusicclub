@@ -11,46 +11,81 @@ type EntryCard = {
   playlistId: string;
   trackCount: number;
   addedAt: string;
+  // Null until the songs are in the Master Mix (we could not read the playlist yet).
+  syncedAt: string | null;
+  // Why the playlist was refused last time we read it, if it was.
+  syncError: string | null;
   deletedAt: string | null;
   claimed: boolean;
 };
 
-type Action = 'rename' | 'delete' | 'restore' | 'claim';
+type Action = 'rename' | 'delete' | 'restore' | 'claim' | 'sync';
 
 const dateFormat = new Intl.DateTimeFormat('en-CA', { month: 'short', day: 'numeric', year: 'numeric' });
 
-// Edit keys live only in the browser that submitted the entry.
+// Edit keys live only in the browser that submitted the entry. The admin key (entered once via
+// the footer) lets one browser manage every entry.
 const editKey = (id: string) => `bir-edit-${id}`;
-function loadEditToken(id: string): string | null {
+const ADMIN_KEY = 'bir-admin';
+function readStorage(key: string): string | null {
   try {
-    return localStorage.getItem(editKey(id));
+    return localStorage.getItem(key);
   } catch {
     return null;
   }
 }
-function saveEditToken(id: string, token: string) {
+function writeStorage(key: string, value: string | null) {
   try {
-    localStorage.setItem(editKey(id), token);
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
   } catch {
     // private mode or storage blocked; editing just won't be offered
   }
 }
+const loadEditToken = (id: string) => readStorage(editKey(id));
+const saveEditToken = (id: string, token: string) => writeStorage(editKey(id), token);
+const loadAdminKey = () => readStorage(ADMIN_KEY);
+// The token to send for delete/restore: the entry's own, or the admin key.
+const manageToken = (id: string) => loadEditToken(id) ?? loadAdminKey();
+const canManage = (id: string) => manageToken(id) !== null;
 
-async function manage(entry: EntryCard, action: Action, name?: string): Promise<EntryCard> {
-  const token = loadEditToken(entry.id);
-  if (!token && action !== 'claim') throw new Error('Only the browser that submitted this playlist can change it.');
-  const { data, errors } = await client.mutations.manageEntry({ id: entry.id, editToken: token ?? undefined, action, name });
-  if (!data) throw new Error(errors?.[0]?.message ?? 'Could not save. Try again.');
-  if (action === 'claim' && data.editToken) saveEditToken(data.id, data.editToken);
+function fromResult(data: {
+  id: string;
+  name: string;
+  playlistId: string;
+  trackCount: number;
+  addedAt: string;
+  syncedAt?: string | null;
+  syncError?: string | null;
+  deletedAt?: string | null;
+  claimed?: boolean | null;
+}): EntryCard {
   return {
     id: data.id,
     name: data.name,
     playlistId: data.playlistId,
     trackCount: data.trackCount,
     addedAt: data.addedAt,
+    syncedAt: data.syncedAt ?? null,
+    syncError: data.syncError ?? null,
     deletedAt: data.deletedAt ?? null,
     claimed: data.claimed ?? false,
   };
+}
+
+async function manage(entry: EntryCard, action: Action, name?: string): Promise<EntryCard> {
+  const needsToken = action === 'delete' || action === 'restore';
+  const token = manageToken(entry.id);
+  if (needsToken && !token) throw new Error('Only the browser that submitted this playlist (or the admin) can do that.');
+  const { data, errors } = await client.mutations.manageEntry({
+    id: entry.id,
+    editToken: needsToken ? token ?? undefined : undefined,
+    action,
+    name,
+  });
+  if (!data) throw new Error(errors?.[0]?.message ?? 'Could not save. Try again.');
+  if (action === 'claim' && data.editToken) saveEditToken(data.id, data.editToken);
+  return fromResult(data);
 }
 
 // A mirror ball: small tiles laid out on a sphere, each lit by a fixed light so the
@@ -257,8 +292,41 @@ function ConfirmWord({
   );
 }
 
+// Shown on a card whose songs are not in the Master Mix yet, with a button to retry now.
+function PendingNote({ entry, onChanged }: { entry: EntryCard; onChanged: (updated: EntryCard) => void }) {
+  const [checking, setChecking] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function check() {
+    setChecking(true);
+    setMessage(null);
+    try {
+      const updated = await manage(entry, 'sync');
+      onChanged(updated);
+      if (!updated.syncedAt && !updated.syncError) setMessage(`Still can't read it. Has ${SPOTIFY_OWNER_NAME} accepted the invite?`);
+    } catch (err: unknown) {
+      setMessage(err instanceof Error ? err.message : 'Could not check. Try again.');
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  return (
+    <div className="pending">
+      <p>
+        <strong>Not in the Master Mix yet.</strong>{' '}
+        {entry.syncError ?? `Waiting for ${SPOTIFY_OWNER_NAME} to accept the collaborator invite. Checked every 10 minutes.`}
+      </p>
+      <button type="button" className="small ghost" onClick={check} disabled={checking}>
+        {checking ? 'Checking…' : 'Check now'}
+      </button>
+      {message && <p className="meta">{message}</p>}
+    </div>
+  );
+}
+
 function EntryHeader({ entry, onChanged }: { entry: EntryCard; onChanged: (updated: EntryCard) => void }) {
-  const mine = loadEditToken(entry.id) !== null;
+  const mine = canManage(entry.id);
   const [mode, setMode] = useState<'view' | 'rename' | 'delete' | 'claim'>('view');
   const [draft, setDraft] = useState(entry.name);
   const [saving, setSaving] = useState(false);
@@ -339,18 +407,17 @@ function EntryHeader({ entry, onChanged }: { entry: EntryCard; onChanged: (updat
     <div className="entry-head">
       <h3>{entry.name}</h3>
       <p className="meta">
-        {entry.trackCount} song{entry.trackCount === 1 ? '' : 's'} · {dateFormat.format(new Date(entry.addedAt))}
+        {entry.syncedAt ? `${entry.trackCount} song${entry.trackCount === 1 ? '' : 's'} · ` : ''}
+        {dateFormat.format(new Date(entry.addedAt))}
       </p>
       <div className="owner-actions">
+        <button type="button" className="link" onClick={() => setMode('rename')}>
+          Edit name
+        </button>
         {mine && (
-          <>
-            <button type="button" className="link" onClick={() => setMode('rename')}>
-              Edit name
-            </button>
-            <button type="button" className="link" onClick={() => setMode('delete')}>
-              Delete
-            </button>
-          </>
+          <button type="button" className="link" onClick={() => setMode('delete')}>
+            Delete
+          </button>
         )}
         {!mine && !entry.claimed && (
           <button type="button" className="link" onClick={() => setMode('claim')}>
@@ -358,6 +425,7 @@ function EntryHeader({ entry, onChanged }: { entry: EntryCard; onChanged: (updat
           </button>
         )}
       </div>
+      {!entry.syncedAt && <PendingNote entry={entry} onChanged={onChanged} />}
     </div>
   );
 }
@@ -402,24 +470,34 @@ export default function App() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
 
+  const [admin, setAdmin] = useState(() => loadAdminKey() !== null);
+
   useEffect(() => {
     async function load() {
       const { data, errors } = await client.models.Entry.list({
-        selectionSet: ['id', 'name', 'playlistId', 'trackCount', 'addedAt', 'deletedAt', 'claimed'],
+        selectionSet: ['id', 'name', 'playlistId', 'trackCount', 'addedAt', 'syncedAt', 'syncError', 'deletedAt', 'claimed'],
         limit: 500,
       });
       if (errors?.length) throw new Error(errors[0].message);
-      setEntries(
-        data
-          .map((e) => ({ ...e, deletedAt: e.deletedAt ?? null, claimed: e.claimed ?? false }))
-          .sort((a, b) => b.addedAt.localeCompare(a.addedAt)),
-      );
+      setEntries(data.map(fromResult).sort((a, b) => b.addedAt.localeCompare(a.addedAt)));
     }
     load().catch((err: unknown) => {
       console.error(err);
       setLoadError('Could not load the playlists. Try refreshing.');
     });
   }, []);
+
+  function toggleAdmin() {
+    if (admin) {
+      writeStorage(ADMIN_KEY, null);
+      setAdmin(false);
+      return;
+    }
+    const key = window.prompt('Admin key:');
+    if (!key?.trim()) return;
+    writeStorage(ADMIN_KEY, key.trim());
+    setAdmin(true);
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -435,8 +513,17 @@ export default function App() {
       });
       if (!data) throw new Error(errors?.[0]?.message ?? 'Something went wrong. Try again.');
       if (data.editToken) saveEditToken(data.id, data.editToken);
-      setEntries((prev) => [{ ...data, deletedAt: null, claimed: true }, ...(prev ?? [])]);
-      setSubmitSuccess(`Added! Your ${data.trackCount} song${data.trackCount === 1 ? '' : 's'} are now in the Master Mix.`);
+      const added = fromResult(data);
+      setEntries((prev) => [added, ...(prev ?? [])]);
+      if (added.syncedAt) {
+        setSubmitSuccess(`Added! Your ${added.trackCount} song${added.trackCount === 1 ? '' : 's'} are now in the Master Mix.`);
+      } else if (added.syncError) {
+        setSubmitSuccess(`Your card is up, but the songs are not in the Master Mix yet: ${added.syncError}`);
+      } else {
+        setSubmitSuccess(
+          `Your card is up. The songs join the Master Mix once ${SPOTIFY_OWNER_NAME} accepts your collaborator invite (see the next box).`,
+        );
+      }
       setName('');
       setEmail('');
       setPlaylistUrl('');
@@ -453,8 +540,9 @@ export default function App() {
   }
 
   const active = entries?.filter((e) => !e.deletedAt) ?? null;
-  const myDeleted = entries?.filter((e) => e.deletedAt && loadEditToken(e.id) !== null) ?? [];
-  const totalSongs = active?.reduce((sum, e) => sum + e.trackCount, 0) ?? 0;
+  const myDeleted = entries?.filter((e) => e.deletedAt && canManage(e.id)) ?? [];
+  const totalSongs = active?.reduce((sum, e) => sum + (e.syncedAt ? e.trackCount : 0), 0) ?? 0;
+  const masterUrl = `https://open.spotify.com/playlist/${MASTER_PLAYLIST_ID}`;
 
   return (
     <div className="page">
@@ -484,24 +572,24 @@ export default function App() {
       </header>
 
       <section className="card master">
-        <div className="card-head">
+        <div className="master-head">
           <h2 className="with-eq">
             <Equalizer />
             The Master Mix
             <Equalizer />
           </h2>
-          <a href={`https://open.spotify.com/playlist/${MASTER_PLAYLIST_ID}`} target="_blank" rel="noreferrer">
+          <a className="btn" href={masterUrl} target="_blank" rel="noreferrer">
             Open in Spotify
           </a>
+          <p className="note">
+            <strong>Sign in to Spotify in this browser</strong> to see the full mix here. The player only shows the first
+            100 songs, and on phones it can be flaky, so for the whole thing use <em>Open in Spotify</em>.
+          </p>
         </div>
-        <p className="hint">
-          Sign in to Spotify in this browser to see the full mix in the player. On phones the player can be flaky, so if it
-          misbehaves use <em>Open in Spotify</em> instead.
-        </p>
         <SpotifyEmbed playlistId={MASTER_PLAYLIST_ID} title="BIR Master Mix" height={720} />
         <p className="hint embed-fallback">
           Player not loading?{' '}
-          <a href={`https://open.spotify.com/playlist/${MASTER_PLAYLIST_ID}`} target="_blank" rel="noreferrer">
+          <a href={masterUrl} target="_blank" rel="noreferrer">
             Open the Master Mix in Spotify
           </a>
           .
@@ -509,28 +597,19 @@ export default function App() {
       </section>
 
       <section className="card submit" id="submit">
-        <h2>Add your playlist</h2>
+        <h2>1. Add your playlist to this page</h2>
         <p className="lede">
-          Pick up to {MAX_TRACKS} songs and paste your playlist link below. This site reads the playlist, gives it a card
-          further down, and drops each song into a random spot in the Master Mix. You never add anything to the Master Mix
-          yourself.
+          This gives you a card below with your name and your playlist. No invite needed for this part.
         </p>
         <ol className="steps">
           <li>
             <strong>Make a playlist in Spotify</strong> with up to {MAX_TRACKS} songs.
           </li>
           <li>
-            <strong>Let the site read it.</strong> Spotify only lets this site open playlists it has been invited to, so
-            open yours, tap the three dots, choose <em>Invite collaborators</em>, and send the invite link to Sam (
-            {SPOTIFY_OWNER_NAME} on Spotify). This is a one-time step per playlist, nobody else can edit your playlist,
-            and on its own it does not put anything in the Master Mix.
-            <div className="copy-row">
-              <CopyName />
-            </div>
+            <strong>Copy its link.</strong> Tap <em>Share</em>, then <em>Copy link to playlist</em>.
           </li>
           <li>
-            <strong>Paste the link below and hit Add.</strong> Tap <em>Share</em>, then <em>Copy link to playlist</em>.
-            This step is what puts your songs in the Master Mix.
+            <strong>Paste it below with your name</strong> and hit <em>Add my playlist</em>.
           </li>
         </ol>
         <form onSubmit={onSubmit}>
@@ -578,10 +657,34 @@ export default function App() {
             </p>
           )}
           <button type="submit" disabled={submitting}>
-            {submitting ? 'Checking with Spotify…' : 'Add my playlist'}
+            {submitting ? 'Adding…' : 'Add my playlist'}
           </button>
-          <p className="hint">Not working? Make sure Sam has accepted your invite first.</p>
         </form>
+      </section>
+
+      <section className="card collaborate" id="collaborate">
+        <h2>2. Get your songs into the Master Mix</h2>
+        <p className="lede">
+          Your card does not put songs in the Master Mix by itself. Spotify only lets this site read playlists it has been
+          invited to, so you need to invite {SPOTIFY_OWNER_NAME} (Sam's Spotify account) as a collaborator. Once Sam
+          accepts, the site reads your playlist and drops each song into a random spot in the Master Mix.
+        </p>
+        <ol className="steps">
+          <li>
+            <strong>Open your playlist in Spotify</strong> and tap the three dots.
+          </li>
+          <li>
+            <strong>Choose <em>Invite collaborators</em></strong> and send the invite link to Sam. It is a one-time step
+            per playlist, and nobody else can edit your playlist.
+            <div className="copy-row">
+              <CopyName />
+            </div>
+          </li>
+          <li>
+            <strong>Wait for Sam to accept.</strong> The site checks every 10 minutes, or hit <em>Check now</em> on your
+            card. Until then the card says <em>Not in the Master Mix yet</em>.
+          </li>
+        </ol>
       </section>
 
       <section className="entries">
@@ -613,8 +716,8 @@ export default function App() {
 
       {myDeleted.length > 0 && (
         <section className="card deleted">
-          <h2>Your deleted playlists</h2>
-          <p className="lede">Only you can see these. Restoring puts the songs back in the Master Mix.</p>
+          <h2>{admin ? 'Deleted playlists' : 'Your deleted playlists'}</h2>
+          <p className="lede">Restoring puts the songs back in the Master Mix.</p>
           <ul className="deleted-list">
             {myDeleted.map((entry) => (
               <DeletedEntry key={entry.id} entry={entry} onChanged={onChanged} />
@@ -624,7 +727,12 @@ export default function App() {
       )}
 
       <footer>
-        <p>Made for the BIR office. Not affiliated with Spotify.</p>
+        <p>
+          Made for the BIR office. Not affiliated with Spotify.{' '}
+          <button type="button" className="link" onClick={toggleAdmin}>
+            {admin ? 'Admin: on' : 'Admin'}
+          </button>
+        </p>
       </footer>
     </div>
   );

@@ -15,15 +15,21 @@ const schema = a.schema({
       // Only present when the person opted into the digest. Nullable because Amplify rejects
       // field-level rules on required fields.
       email: a.email().authorization(backendOnly),
-      // Secret handed to the submitting browser so it can rename/delete/restore its own entry.
+      // Secret handed to the submitting browser so it can delete/restore its own entry.
       editToken: a.string().authorization(backendOnly),
       // Spotify URIs that were added to the master playlist, so delete/restore can sync it.
       trackUris: a.string().array().authorization(backendOnly),
       playlistUrl: a.url().required(),
       playlistId: a.string().required(),
+      // 0 until the playlist has been read (see syncedAt).
       trackCount: a.integer().required(),
       digestOptIn: a.boolean().required(),
       addedAt: a.datetime().required(),
+      // Set once the songs are in the master playlist. Unset means we could not read the
+      // playlist yet (no collaborator invite) and sync-pending keeps retrying.
+      syncedAt: a.datetime(),
+      // Why the last sync attempt refused the playlist (too many songs, empty...), if it did.
+      syncError: a.string(),
       // Set when the owner deletes the entry. The record is kept so it can be restored.
       deletedAt: a.datetime(),
       // False only for entries created before edit tokens existed; they show a one-time "claim" link.
@@ -41,13 +47,15 @@ const schema = a.schema({
     playlistId: a.string().required(),
     trackCount: a.integer().required(),
     addedAt: a.string().required(),
+    syncedAt: a.string(),
+    syncError: a.string(),
     deletedAt: a.string(),
     claimed: a.boolean(),
     editToken: a.string(),
   }),
 
-  // The only way to create an entry. The Lambda rate limits by IP, validates the playlist
-  // against Spotify, adds its songs to the master playlist, and saves the Entry.
+  // The only way to create an entry. The Lambda rate limits by IP, saves the Entry, then tries
+  // to read the playlist and add its songs to the master playlist (see amplify/sync.ts).
   submitPlaylist: a
     .mutation()
     .arguments({
@@ -61,7 +69,8 @@ const schema = a.schema({
     .authorization((allow) => [allow.guest()])
     .handler(a.handler.function(submitPlaylist)),
 
-  // Rename, delete (soft) or restore an entry. Requires the editToken from submitPlaylist.
+  // rename: anyone. sync: anyone (retries putting a pending entry's songs in the master playlist).
+  // delete/restore: the editToken from submitPlaylist, or the admin key.
   // Delete removes the entry's songs from the master playlist; restore adds them back.
   // "claim" issues a token for an entry that predates tokens (no editToken needed, works once).
   manageEntry: a
@@ -69,7 +78,7 @@ const schema = a.schema({
     .arguments({
       id: a.string().required(),
       editToken: a.string(),
-      action: a.enum(['rename', 'delete', 'restore', 'claim']),
+      action: a.enum(['rename', 'delete', 'restore', 'claim', 'sync']),
       name: a.string(),
     })
     .returns(a.ref('SubmittedEntry'))

@@ -54,18 +54,6 @@ a:hover {
   text-align: center;
   padding: 0 0 40px;
 }
-.eyebrow {
-  margin: 12px 0 0;
-  color: var(--accent);
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 12px;
-}
 .stats {
   margin: 14px 0 0;
   min-height: 21px;
@@ -74,7 +62,75 @@ a:hover {
   font-weight: 500;
 }
 .embed-fallback {
-  margin-top: 18px;
+  margin-top: 22px;
+  text-align: center;
+}
+
+/* Master Mix card: everything above the player is centred */
+.master-head {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+  text-align: center;
+}
+.master-head h2 {
+  font-size: clamp(28px, 4.5vw, 40px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.note {
+  margin: 0;
+  max-width: 640px;
+  color: var(--text);
+  font-size: 17px;
+  line-height: 1.5;
+}
+.note strong {
+  color: var(--accent-hover);
+}
+.note em {
+  font-style: normal;
+  font-weight: 600;
+}
+/* Links styled as buttons */
+.btn {
+  display: inline-block;
+  padding: 12px 24px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 700;
+  transition: background 0.15s, transform 0.1s;
+}
+.btn:hover {
+  background: var(--accent-hover);
+  color: var(--accent-ink);
+  text-decoration: none;
+  transform: translateY(-1px);
+}
+
+/* Card whose songs are not in the Master Mix yet */
+.pending {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: rgba(255, 205, 80, 0.1);
+  border: 1px solid rgba(255, 205, 80, 0.35);
+  border-radius: 10px;
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.pending p {
+  margin: 0;
+}
+.pending strong {
+  color: #f0c650;
+}
+.pending button {
+  justify-self: start;
 }
 
 /* Occasional disco light beams in the background, fanning down from the disco ball.
@@ -203,17 +259,17 @@ a:hover {
 .with-eq {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
 }
 .eq {
   display: inline-flex;
   align-items: flex-end;
-  gap: 2px;
-  height: 18px;
+  gap: 3px;
+  height: 26px;
 }
 .eq i {
   display: block;
-  width: 3px;
+  width: 4px;
   height: 40%;
   background: var(--accent);
   border-radius: 2px;
@@ -506,9 +562,10 @@ button.danger:hover:not(:disabled) {
   padding: 0;
 }
 .entry-foot {
-  margin: 12px 0 0;
+  margin: 14px 0 0;
   font-size: 14px;
   font-weight: 600;
+  text-align: center;
 }
 .confirm {
   gap: 10px;

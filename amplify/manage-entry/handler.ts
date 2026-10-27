@@ -2,7 +2,8 @@ import { randomBytes } from 'node:crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, ScanCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import type { Schema } from '../data/resource';
-import { addToMasterPlaylist, addableUris, fetchPlaylistItems, refreshSpotifyToken, removeFromMasterPlaylist } from '../spotify';
+import { addToMasterPlaylist, addableUris, fetchPlaylistItems, readOptionalSecret, refreshSpotifyToken, removeFromMasterPlaylist } from '../spotify';
+import { syncEntry } from '../sync';
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
@@ -13,16 +14,18 @@ type EntryItem = {
   playlistId: string;
   trackCount: number;
   addedAt: string;
+  syncedAt?: string;
+  syncError?: string;
   deletedAt?: string;
   claimed?: boolean;
   editToken?: string;
   trackUris?: string[];
 };
 
-const NOT_YOURS = 'Only the browser that submitted this playlist can change it.';
+const NOT_YOURS = 'Only the browser that submitted this playlist (or the admin) can do that.';
 
-// Rename, soft-delete or restore an entry. The caller must present the editToken that
-// submitPlaylist handed out; the submitting browser keeps it in localStorage.
+// rename and sync are open to everyone. delete and restore need the editToken that
+// submitPlaylist handed out (the submitting browser keeps it in localStorage) or the admin key.
 // Delete/restore keep the master playlist in sync, without touching songs that another
 // active entry also contributed.
 // "claim" exists for entries created before edit tokens were introduced: it issues a token
@@ -35,83 +38,93 @@ export const handler: Schema['manageEntry']['functionHandler'] = async (event) =
   if (!id) throw new Error(NOT_YOURS);
 
   const current = (await ddb.send(new GetCommand({ TableName: tableName, Key: { id } }))).Item as EntryItem | undefined;
-  if (!current) throw new Error(NOT_YOURS);
+  if (!current) throw new Error('That playlist no longer exists. Refresh the page.');
 
   const now = new Date().toISOString();
-
-  if (action === 'claim') {
-    if (current.editToken) throw new Error('This playlist has already been claimed.');
-    const accessToken = await refreshSpotifyToken();
-    const items = await fetchPlaylistItems(accessToken, current.playlistId);
-    const token = randomBytes(16).toString('hex');
-    try {
-      const result = await ddb.send(
-        new UpdateCommand({
-          TableName: tableName,
-          Key: { id },
-          UpdateExpression: 'SET editToken = :token, claimed = :true, trackUris = :uris, trackCount = :count, updatedAt = :now',
-          ConditionExpression: 'attribute_not_exists(editToken)',
-          ExpressionAttributeValues: { ':token': token, ':true': true, ':uris': addableUris(items), ':count': items.total, ':now': now },
-          ReturnValues: 'ALL_NEW',
-        }),
-      );
-      return { ...publicFields(result.Attributes as EntryItem), editToken: token };
-    } catch (err) {
-      if ((err as { name?: string }).name === 'ConditionalCheckFailedException') throw new Error('This playlist has already been claimed.');
-      throw err;
-    }
-  }
-
-  if (!editToken || current.editToken !== editToken) throw new Error(NOT_YOURS);
 
   switch (action) {
     case 'rename': {
       const name = (event.arguments.name ?? '').trim();
       if (name.length < 1 || name.length > 60) throw new Error('Please enter a name (up to 60 characters).');
-      return publicFields(await update(tableName, id, editToken, 'SET #name = :name, updatedAt = :now', { ':name': name, ':now': now }, { '#name': 'name' }));
+      const result = await ddb.send(
+        new UpdateCommand({
+          TableName: tableName,
+          Key: { id },
+          UpdateExpression: 'SET #name = :name, updatedAt = :now',
+          ExpressionAttributeNames: { '#name': 'name' },
+          ExpressionAttributeValues: { ':name': name, ':now': now },
+          ReturnValues: 'ALL_NEW',
+        }),
+      );
+      return publicFields(result.Attributes as EntryItem);
     }
+    case 'sync': {
+      if (current.syncedAt || current.deletedAt) return publicFields(current);
+      const result = await syncEntry(ddb, tableName, await refreshSpotifyToken(), current);
+      if (result.status === 'synced') {
+        return publicFields({ ...current, trackCount: result.trackCount, syncedAt: result.syncedAt, syncError: undefined });
+      }
+      return publicFields({ ...current, syncError: result.status === 'rejected' ? result.syncError : undefined });
+    }
+    case 'claim': {
+      if (current.editToken) throw new Error('This playlist has already been claimed.');
+      const accessToken = await refreshSpotifyToken();
+      const items = await fetchPlaylistItems(accessToken, current.playlistId);
+      const token = randomBytes(16).toString('hex');
+      try {
+        const result = await ddb.send(
+          new UpdateCommand({
+            TableName: tableName,
+            Key: { id },
+            UpdateExpression: 'SET editToken = :token, claimed = :true, trackUris = :uris, trackCount = :count, syncedAt = if_not_exists(syncedAt, :now), updatedAt = :now',
+            ConditionExpression: 'attribute_not_exists(editToken)',
+            ExpressionAttributeValues: { ':token': token, ':true': true, ':uris': addableUris(items), ':count': items.total, ':now': now },
+            ReturnValues: 'ALL_NEW',
+          }),
+        );
+        return { ...publicFields(result.Attributes as EntryItem), editToken: token };
+      } catch (err) {
+        if ((err as { name?: string }).name === 'ConditionalCheckFailedException') throw new Error('This playlist has already been claimed.');
+        throw err;
+      }
+    }
+  }
+
+  // delete / restore
+  const adminKey = readOptionalSecret('ADMIN_KEY');
+  const isAdmin = !!adminKey && editToken === adminKey;
+  const isOwner = !!editToken && current.editToken === editToken;
+  if (!isAdmin && !isOwner) throw new Error(NOT_YOURS);
+
+  switch (action) {
     case 'delete': {
       if (current.deletedAt) return publicFields(current);
       const uris = await urisNotHeldByOthers(tableName, current);
       if (uris.length > 0) await removeFromMasterPlaylist(await refreshSpotifyToken(), uris);
-      return publicFields(await update(tableName, id, editToken, 'SET deletedAt = :now, updatedAt = :now', { ':now': now }));
+      return publicFields(await update(tableName, id, 'SET deletedAt = :now, updatedAt = :now', { ':now': now }));
     }
     case 'restore': {
       if (!current.deletedAt) return publicFields(current);
       const uris = await urisNotHeldByOthers(tableName, current);
       if (uris.length > 0) await addToMasterPlaylist(await refreshSpotifyToken(), uris);
-      return publicFields(await update(tableName, id, editToken, 'REMOVE deletedAt SET updatedAt = :now', { ':now': now }));
+      return publicFields(await update(tableName, id, 'REMOVE deletedAt SET updatedAt = :now', { ':now': now }));
     }
     default:
       throw new Error('Unknown action.');
   }
 };
 
-async function update(
-  tableName: string,
-  id: string,
-  editToken: string,
-  expression: string,
-  values: Record<string, unknown>,
-  names?: Record<string, string>,
-): Promise<EntryItem> {
-  try {
-    const result = await ddb.send(
-      new UpdateCommand({
-        TableName: tableName,
-        Key: { id },
-        UpdateExpression: expression,
-        ConditionExpression: 'editToken = :token',
-        ExpressionAttributeNames: names,
-        ExpressionAttributeValues: { ...values, ':token': editToken },
-        ReturnValues: 'ALL_NEW',
-      }),
-    );
-    return result.Attributes as EntryItem;
-  } catch (err) {
-    if ((err as { name?: string }).name === 'ConditionalCheckFailedException') throw new Error(NOT_YOURS);
-    throw err;
-  }
+async function update(tableName: string, id: string, expression: string, values: Record<string, unknown>): Promise<EntryItem> {
+  const result = await ddb.send(
+    new UpdateCommand({
+      TableName: tableName,
+      Key: { id },
+      UpdateExpression: expression,
+      ExpressionAttributeValues: values,
+      ReturnValues: 'ALL_NEW',
+    }),
+  );
+  return result.Attributes as EntryItem;
 }
 
 // This entry's songs minus any that another active entry also contributed, so that
@@ -145,6 +158,8 @@ function publicFields(item: EntryItem) {
     playlistId: item.playlistId,
     trackCount: item.trackCount,
     addedAt: item.addedAt,
+    syncedAt: item.syncedAt ?? null,
+    syncError: item.syncError ?? null,
     deletedAt: item.deletedAt ?? null,
     claimed: item.claimed ?? false,
   };

@@ -2,13 +2,16 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import type { Schema } from '../data/resource';
-import { addToMasterPlaylist, addableUris, fetchPlaylistItems, refreshSpotifyToken } from '../spotify';
-import { maxTracksFor } from '../../config';
+import { refreshSpotifyToken } from '../spotify';
+import { syncEntry } from '../sync';
 
 const RATE_LIMIT_PER_HOUR = 10;
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
+// Creates the entry (the card on the page) straight away, then tries to put its songs in the
+// master playlist. If Spotify will not let us read the playlist yet (no collaborator invite
+// accepted), the entry stays pending and sync-pending retries it on a schedule.
 // Any Error thrown here reaches the browser as the GraphQL error message, so keep them readable.
 export const handler: Schema['submitPlaylist']['functionHandler'] = async (event) => {
   const entryTable = process.env.ENTRY_TABLE_NAME;
@@ -29,18 +32,6 @@ export const handler: Schema['submitPlaylist']['functionHandler'] = async (event
   }
   if (!playlistId) throw new Error('That does not look like a Spotify playlist link. In Spotify use Share > Copy link to playlist.');
 
-  const accessToken = await refreshSpotifyToken();
-  const items = await fetchPlaylistItems(accessToken, playlistId);
-  if (items.total === 0) throw new Error('That playlist is empty.');
-  const limit = maxTracksFor(name);
-  if (items.total > limit) {
-    throw new Error(`That playlist has ${items.total} songs. The limit is ${limit}. Trim it down and try again.`);
-  }
-  const uris = addableUris(items);
-  if (uris.length === 0) throw new Error('Those songs are local files, which Spotify cannot add to another playlist.');
-
-  await addToMasterPlaylist(accessToken, uris);
-
   const now = new Date().toISOString();
   const editToken = randomBytes(16).toString('hex');
   const entry = {
@@ -48,7 +39,7 @@ export const handler: Schema['submitPlaylist']['functionHandler'] = async (event
     name,
     playlistUrl: `https://open.spotify.com/playlist/${playlistId}`,
     playlistId,
-    trackCount: items.total,
+    trackCount: 0,
     addedAt: now,
   };
   await ddb.send(
@@ -59,7 +50,7 @@ export const handler: Schema['submitPlaylist']['functionHandler'] = async (event
         ...(email ? { email } : {}),
         editToken,
         claimed: true,
-        trackUris: uris,
+        trackUris: [],
         digestOptIn,
         createdAt: now,
         updatedAt: now,
@@ -67,7 +58,16 @@ export const handler: Schema['submitPlaylist']['functionHandler'] = async (event
       },
     }),
   );
-  return { ...entry, claimed: true, editToken };
+
+  const result = await syncEntry(ddb, entryTable, await refreshSpotifyToken(), entry);
+  return {
+    ...entry,
+    trackCount: result.status === 'synced' ? result.trackCount : 0,
+    syncedAt: result.status === 'synced' ? result.syncedAt : null,
+    syncError: result.status === 'rejected' ? result.syncError : null,
+    claimed: true,
+    editToken,
+  };
 };
 
 function clientIp(headers: Record<string, string | undefined>): string {

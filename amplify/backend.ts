@@ -5,12 +5,14 @@ import { auth } from './auth/resource';
 import { data } from './data/resource';
 import { submitPlaylist } from './submit-playlist/resource';
 import { manageEntry } from './manage-entry/resource';
+import { syncPending } from './sync-pending/resource';
 
 const backend = defineBackend({
   auth,
   data,
   submitPlaylist,
   manageEntry,
+  syncPending,
 });
 
 // Nobody signs in to this site. Cognito exists only so the identity pool can hand guests
@@ -20,7 +22,7 @@ backend.auth.resources.cfnResources.cfnUserPool.adminCreateUserConfig = {
   allowAdminCreateUserOnly: true,
 };
 
-// Both Lambdas talk straight to the model's table.
+// All three Lambdas talk straight to the model's table.
 const entryTable = backend.data.resources.tables['Entry'];
 const submitLambda = backend.submitPlaylist.resources.lambda;
 entryTable.grantWriteData(submitLambda);
@@ -29,6 +31,10 @@ backend.submitPlaylist.addEnvironment('ENTRY_TABLE_NAME', entryTable.tableName);
 const manageLambda = backend.manageEntry.resources.lambda;
 entryTable.grantReadWriteData(manageLambda);
 backend.manageEntry.addEnvironment('ENTRY_TABLE_NAME', entryTable.tableName);
+
+const syncLambda = backend.syncPending.resources.lambda;
+entryTable.grantReadWriteData(syncLambda);
+backend.syncPending.addEnvironment('ENTRY_TABLE_NAME', entryTable.tableName);
 
 // Per-IP attempt counters for rate limiting. Rows expire on their own via TTL.
 const rateLimitTable = new Table(Stack.of(submitLambda), 'RateLimitTable', {
