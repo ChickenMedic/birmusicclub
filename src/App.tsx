@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties, type FormEvent } from 'react';
 import { generateClient } from 'aws-amplify/data';
 import type { Schema } from '../amplify/data/resource';
-import { isFounder, MASTER_PLAYLIST_ID, MAX_TRACKS, SPOTIFY_OWNER_NAME } from '../config';
+import { isFounder, MASTER_PLAYLIST_ID, MAX_TRACKS } from '../config';
 
 const client = generateClient<Schema>({ authMode: 'identityPool' });
 
@@ -215,34 +215,6 @@ function SpotifyEmbed({ playlistId, title, height }: { playlistId: string; title
   );
 }
 
-function CopyName() {
-  const [copied, setCopied] = useState(false);
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(SPOTIFY_OWNER_NAME);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      window.prompt('Copy this name:', SPOTIFY_OWNER_NAME);
-    }
-  }
-  return (
-    <button type="button" className={`copy${copied ? ' copied' : ''}`} onClick={copy}>
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        {copied ? (
-          <path d="M20 6 9 17l-5-5" />
-        ) : (
-          <>
-            <rect x="9" y="9" width="13" height="13" rx="2" />
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-          </>
-        )}
-      </svg>
-      {copied ? 'Copied to clipboard' : `Copy "${SPOTIFY_OWNER_NAME}"`}
-    </button>
-  );
-}
-
 // "Type the word to confirm" control used for delete and restore.
 function ConfirmWord({
   word,
@@ -305,7 +277,7 @@ function PendingNote({ entry, onChanged }: { entry: EntryCard; onChanged: (updat
     try {
       const updated = await manage(entry, 'sync');
       onChanged(updated);
-      if (!updated.syncedAt && !updated.syncError) setMessage(`Still can't read it. Has ${SPOTIFY_OWNER_NAME} accepted the invite?`);
+      if (!updated.syncedAt && !updated.syncError) setMessage('Still waiting. Has Sam opened your invite link?');
     } catch (err: unknown) {
       setMessage(err instanceof Error ? err.message : 'Could not check. Try again.');
     } finally {
@@ -317,7 +289,7 @@ function PendingNote({ entry, onChanged }: { entry: EntryCard; onChanged: (updat
     <div className="pending">
       <p>
         <strong>Not in the Master Mix yet.</strong>{' '}
-        {entry.syncError ?? `Waiting for ${SPOTIFY_OWNER_NAME} to accept the collaborator invite. Checked every 10 minutes.`}
+        {entry.syncError ?? 'Waiting for Sam to open your invite link. Checked every 10 minutes.'}
       </p>
       <button type="button" className="small ghost" onClick={check} disabled={checking}>
         {checking ? 'Checking…' : 'Check now'}
@@ -465,9 +437,7 @@ export default function App() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
   const [playlistUrl, setPlaylistUrl] = useState('');
-  const [digestOptIn, setDigestOptIn] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
@@ -507,12 +477,8 @@ export default function App() {
     setSubmitSuccess(null);
     setSubmitting(true);
     try {
-      const { data, errors } = await client.mutations.submitPlaylist({
-        name,
-        email: digestOptIn ? email : undefined,
-        playlistUrl,
-        digestOptIn,
-      });
+      // The weekly digest is not set up, so nobody opts in and no email is collected.
+      const { data, errors } = await client.mutations.submitPlaylist({ name, playlistUrl, digestOptIn: false });
       if (!data) throw new Error(errors?.[0]?.message ?? 'Something went wrong. Try again.');
       if (data.editToken) saveEditToken(data.id, data.editToken);
       const added = fromResult(data);
@@ -522,14 +488,10 @@ export default function App() {
       } else if (added.syncError) {
         setSubmitSuccess(`Your card is up, but the songs are not in the Master Mix yet: ${added.syncError}`);
       } else {
-        setSubmitSuccess(
-          `Your card is up. The songs join the Master Mix once ${SPOTIFY_OWNER_NAME} accepts your collaborator invite (see the next box).`,
-        );
+        setSubmitSuccess('Your card is up. The songs join the Master Mix once Sam opens your invite link (see the next box).');
       }
       setName('');
-      setEmail('');
       setPlaylistUrl('');
-      setDigestOptIn(false);
     } catch (err: unknown) {
       setSubmitError(err instanceof Error ? err.message : 'Something went wrong. Try again.');
     } finally {
@@ -584,8 +546,9 @@ export default function App() {
             Open in Spotify
           </a>
           <p className="note">
-            <strong>Sign in to Spotify in this browser</strong> to see the full mix here. The player only shows the first
-            100 songs, and on phones it can be flaky, so for the whole thing use <em>Open in Spotify</em>.
+            <strong>Sign in to Spotify in this browser</strong> to use the player. It only shows the first 100 songs.
+            <br />
+            On phones it is unreliable, so use <em>Open in Spotify</em>.
           </p>
         </div>
         <SpotifyEmbed playlistId={MASTER_PLAYLIST_ID} title="BIR Master Mix" height={720} />
@@ -631,23 +594,6 @@ export default function App() {
               />
             </label>
           </div>
-          <label className="check">
-            <input type="checkbox" checked={digestOptIn} onChange={(e) => setDigestOptIn(e.target.checked)} />
-            Email me on Mondays with what's new (optional)
-          </label>
-          {digestOptIn && (
-            <label>
-              Email
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoComplete="email"
-                autoFocus
-              />
-            </label>
-          )}
           {submitError && (
             <p className="alert error" role="alert">
               {submitError}
@@ -666,25 +612,17 @@ export default function App() {
 
       <section className="card collaborate" id="collaborate">
         <h2>2. Get your songs into the Master Mix</h2>
-        <p className="lede">
-          Your card does not put songs in the Master Mix by itself. Spotify only lets this site read playlists it has been
-          invited to, so you need to invite {SPOTIFY_OWNER_NAME} (Sam's Spotify account) as a collaborator. Once Sam
-          accepts, the site reads your playlist and drops each song into a random spot in the Master Mix.
-        </p>
+        <p className="lede">Your card alone does not add songs to the Master Mix. Sam needs an invite link to your playlist.</p>
         <ol className="steps">
           <li>
-            <strong>Open your playlist in Spotify</strong> and tap the three dots.
+            <strong>Open your playlist in Spotify</strong>, tap the three dots, and choose <em>Invite collaborators</em>.
           </li>
           <li>
-            <strong>Choose <em>Invite collaborators</em></strong> and send the invite link to Sam. It is a one-time step
-            per playlist, and nobody else can edit your playlist.
-            <div className="copy-row">
-              <CopyName />
-            </div>
+            <strong>Send the link to Sam</strong> on Teams or by email.
           </li>
           <li>
-            <strong>Wait for Sam to accept.</strong> The site checks every 10 minutes, or hit <em>Check now</em> on your
-            card. Until then the card says <em>Not in the Master Mix yet</em>.
+            <strong>Done.</strong> Once Sam opens it your songs are added within 10 minutes, or hit <em>Check now</em> on
+            your card.
           </li>
         </ol>
       </section>
