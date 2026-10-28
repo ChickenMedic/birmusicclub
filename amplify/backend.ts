@@ -42,5 +42,8 @@ const rateLimitTable = new Table(Stack.of(submitLambda), 'RateLimitTable', {
   billingMode: BillingMode.PAY_PER_REQUEST,
   timeToLiveAttribute: 'expiresAt',
 });
-rateLimitTable.grantReadWriteData(submitLambda);
-backend.submitPlaylist.addEnvironment('RATE_LIMIT_TABLE_NAME', rateLimitTable.tableName);
+// It also holds when a Spotify back-off ends, which every Lambda that calls Spotify checks.
+for (const fn of [backend.submitPlaylist, backend.manageEntry, backend.syncPending]) {
+  rateLimitTable.grantReadWriteData(fn.resources.lambda);
+  fn.addEnvironment('RATE_LIMIT_TABLE_NAME', rateLimitTable.tableName);
+}

@@ -1,6 +1,10 @@
 // Spotify helpers shared by the Lambdas. Credentials come from the function's environment
 // (Amplify secrets resolved at runtime).
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { MASTER_PLAYLIST_ID, SPOTIFY_OWNER_NAME } from '../config';
+
+const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 const SPOTIFY_RETRY_BUDGET_MS = 20_000;
 const MAX_ITEMS_PER_REQUEST = 100;
@@ -26,7 +30,9 @@ function readSecrets(names: string[]): string[] {
   return values as string[];
 }
 
+// Every Spotify call starts here, so this is where a recorded back-off stops us before we ask.
 export async function refreshSpotifyToken(): Promise<string> {
+  await assertNotPaused();
   const [clientId, clientSecret, refreshToken] = readSecrets(['SPOTIFY_CLIENT_ID', 'SPOTIFY_CLIENT_SECRET', 'SPOTIFY_REFRESH_TOKEN']);
 
   const res = await spotifyFetch('https://accounts.spotify.com/api/token', {
@@ -151,9 +157,33 @@ export async function spotifyFetch(url: string, init: RequestInit): Promise<Resp
     const retryAfterSec = Number(res.headers.get('retry-after') ?? '1') || 1;
     const waitMs = retryAfterSec * 1000;
     if (Date.now() + waitMs > deadline) {
+      await recordPause(retryAfterSec);
       throw new SpotifyRateLimitError(retryAfterSec);
     }
     await new Promise((r) => setTimeout(r, waitMs));
+  }
+}
+
+// When Spotify asks for a long back-off we remember when it ends (in the shared RateLimitTable),
+// so no Lambda calls Spotify again before then. Asking during a back-off can extend it.
+const PAUSE_KEY = 'spotify-pause';
+
+async function assertNotPaused(): Promise<void> {
+  const tableName = process.env.RATE_LIMIT_TABLE_NAME;
+  if (!tableName) return;
+  const item = (await ddb.send(new GetCommand({ TableName: tableName, Key: { pk: PAUSE_KEY } }))).Item;
+  const remainingSec = Math.ceil((item?.until as number | undefined ?? 0) - Date.now() / 1000);
+  if (remainingSec > 0) throw new SpotifyRateLimitError(remainingSec);
+}
+
+async function recordPause(retryAfterSec: number): Promise<void> {
+  const tableName = process.env.RATE_LIMIT_TABLE_NAME;
+  if (!tableName) return;
+  const until = Math.ceil(Date.now() / 1000) + retryAfterSec;
+  try {
+    await ddb.send(new PutCommand({ TableName: tableName, Item: { pk: PAUSE_KEY, until, expiresAt: until + 3600 } }));
+  } catch (err) {
+    console.error('Could not record the Spotify pause', err);
   }
 }
 
