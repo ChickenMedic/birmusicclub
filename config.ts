@@ -16,9 +16,10 @@ export const FOUNDER_MAX_TRACKS = 12;
 
 const normalizeName = (name: string) => name.toLowerCase().replace(/[.\s]+/g, ' ').trim();
 
+export const sameName = (a: string, b: string) => normalizeName(a) === normalizeName(b);
+
 export function isFounder(name: string): boolean {
-  const normalized = normalizeName(name);
-  return FOUNDERS.some((f) => normalizeName(f) === normalized);
+  return FOUNDERS.some((f) => sameName(f, name));
 }
 
 export function maxTracksFor(name: string): number {

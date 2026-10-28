@@ -1,7 +1,7 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
-import { refreshSpotifyToken } from '../spotify';
-import { refreshEntry, scanActiveEntries, syncEntry, urisHeldByOthers } from '../sync';
+import { refreshSpotifyToken, SpotifyRateLimitError } from '../spotify';
+import { refreshEntry, scanActiveEntries, syncEntry, urisHeldByOthers, type SyncableEntry } from '../sync';
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
@@ -16,6 +16,16 @@ export const handler = async (): Promise<void> => {
   const pending = entries.filter((e) => !e.syncedAt);
   console.log(`${entries.length} active entries, ${pending.length} pending`);
 
+  try {
+    await syncAll(entries, pending, tableName);
+  } catch (err) {
+    // Keep calling Spotify during a back-off and it can extend it. Stop until the next run.
+    if (!(err instanceof SpotifyRateLimitError)) throw err;
+    console.warn(`Spotify rate limit, retry after ${err.retryAfterSec}s. Stopping this run.`);
+  }
+};
+
+async function syncAll(entries: SyncableEntry[], pending: SyncableEntry[], tableName: string): Promise<void> {
   const accessToken = await refreshSpotifyToken();
 
   for (const entry of pending) {
@@ -29,6 +39,7 @@ export const handler = async (): Promise<void> => {
         entry.trackCount = result.trackCount;
       }
     } catch (err) {
+      if (err instanceof SpotifyRateLimitError) throw err;
       console.error('sync failed for', entry.name, entry.playlistId, err);
     }
   }
@@ -45,7 +56,8 @@ export const handler = async (): Promise<void> => {
         console.log(entry.name, entry.playlistId, result.status, result.status === 'rejected' ? result.syncError : '');
       }
     } catch (err) {
+      if (err instanceof SpotifyRateLimitError) throw err;
       console.error('refresh failed for', entry.name, entry.playlistId, err);
     }
   }
-};
+}

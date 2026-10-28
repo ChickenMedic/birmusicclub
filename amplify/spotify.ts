@@ -126,6 +126,22 @@ export async function removeFromMasterPlaylist(accessToken: string, uris: string
   }
 }
 
+// Thrown when Spotify tells us to back off for longer than we are willing to wait. Calling again
+// before the wait is over can make Spotify extend it, so callers should stop, not move on.
+export class SpotifyRateLimitError extends Error {
+  constructor(public readonly retryAfterSec: number) {
+    super(`Spotify has paused updates for ${describeWait(retryAfterSec)}. Song changes will be picked up automatically after that.`);
+    this.name = 'SpotifyRateLimitError';
+  }
+}
+
+function describeWait(sec: number): string {
+  if (sec < 90) return 'a minute';
+  const min = Math.round(sec / 60);
+  if (min < 90) return `about ${min} minutes`;
+  return `about ${Math.round(min / 60)} hours`;
+}
+
 // fetch that honours Retry-After on 429 within a fixed time budget, then gives up with a clear message.
 export async function spotifyFetch(url: string, init: RequestInit): Promise<Response> {
   const deadline = Date.now() + SPOTIFY_RETRY_BUDGET_MS;
@@ -135,7 +151,7 @@ export async function spotifyFetch(url: string, init: RequestInit): Promise<Resp
     const retryAfterSec = Number(res.headers.get('retry-after') ?? '1') || 1;
     const waitMs = retryAfterSec * 1000;
     if (Date.now() + waitMs > deadline) {
-      throw new Error(`Spotify is rate limiting us. Try again in about ${retryAfterSec} seconds.`);
+      throw new SpotifyRateLimitError(retryAfterSec);
     }
     await new Promise((r) => setTimeout(r, waitMs));
   }

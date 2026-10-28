@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../amplify/data/resource";
-import { isFounder, MASTER_PLAYLIST_ID, MAX_TRACKS } from "../config";
+import { isFounder, MASTER_PLAYLIST_ID, MAX_TRACKS, sameName } from "../config";
 
 const client = generateClient<Schema>({ authMode: "identityPool" });
 
@@ -58,6 +58,14 @@ const inMix = (entry: EntryCard) =>
 // The token to send for delete/restore: the entry's own, or the admin key.
 const manageToken = (id: string) => loadEditToken(id) ?? loadAdminKey();
 const canManage = (id: string) => manageToken(id) !== null;
+// The grid opens with the newest playlist, then Katie U.'s and Chris O.'s, then everyone else
+// newest first. Expects entries already sorted newest first.
+const PINNED = ["Katie U.", "Chris O."];
+function gridOrder(entries: EntryCard[]): EntryCard[] {
+  const pinned = PINNED.flatMap((p) => entries.filter((e) => sameName(e.name, p)));
+  const rest = entries.filter((e) => !pinned.includes(e));
+  return [...rest.slice(0, 1), ...pinned, ...rest.slice(1)];
+}
 
 function fromResult(data: {
   id: string;
@@ -409,7 +417,7 @@ function RefreshSongs({
       if (updated.syncError) setMessage(null);
       else if (updated.syncedAt !== entry.syncedAt)
         setMessage("Updated. The Master Mix now matches your playlist.");
-      else setMessage("No changes since the last check.");
+      else setMessage("Already up to date with your playlist.");
     } catch (err: unknown) {
       setMessage(
         err instanceof Error ? err.message : "Could not check. Try again.",
@@ -427,7 +435,7 @@ function RefreshSongs({
         onClick={check}
         disabled={checking}
       >
-        {checking ? "Checking…" : "Changed your songs?"}
+        {checking ? "Updating…" : "Update song list"}
       </button>
       {message && <p className="meta refresh-note">{message}</p>}
     </>
@@ -723,7 +731,7 @@ export default function App() {
     );
   }
 
-  const active = entries?.filter((e) => !e.deletedAt) ?? null;
+  const active = entries ? gridOrder(entries.filter((e) => !e.deletedAt)) : null;
   const myDeleted =
     entries?.filter((e) => e.deletedAt && canManage(e.id)) ?? [];
   const totalSongs =

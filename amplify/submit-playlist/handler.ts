@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import type { Schema } from '../data/resource';
-import { refreshSpotifyToken } from '../spotify';
+import { refreshSpotifyToken, SpotifyRateLimitError } from '../spotify';
 import { syncEntry } from '../sync';
 
 const RATE_LIMIT_PER_HOUR = 10;
@@ -59,7 +59,15 @@ export const handler: Schema['submitPlaylist']['functionHandler'] = async (event
     }),
   );
 
-  const result = await syncEntry(ddb, entryTable, await refreshSpotifyToken(), entry);
+  // The card is saved either way. If Spotify is making us wait, leave it pending for the
+  // scheduled run instead of failing, so the browser still gets its edit token.
+  let result: Awaited<ReturnType<typeof syncEntry>>;
+  try {
+    result = await syncEntry(ddb, entryTable, await refreshSpotifyToken(), entry);
+  } catch (err) {
+    if (!(err instanceof SpotifyRateLimitError)) throw err;
+    result = { status: 'rejected', syncError: err.message };
+  }
   return {
     ...entry,
     trackCount: result.status === 'synced' ? result.trackCount : 0,
