@@ -1,9 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, GetCommand, ScanCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import type { Schema } from '../data/resource';
 import { addToMasterPlaylist, addableUris, fetchPlaylistItems, readOptionalSecret, refreshSpotifyToken, removeFromMasterPlaylist } from '../spotify';
-import { syncEntry } from '../sync';
+import { refreshEntry, scanActiveEntries, syncEntry, urisHeldByOthers } from '../sync';
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
@@ -24,7 +24,9 @@ type EntryItem = {
 
 const NOT_YOURS = 'Only the browser that submitted this playlist (or the admin) can do that.';
 
-// rename and sync are open to everyone. delete and restore need the editToken that
+// rename and sync are open to everyone. sync puts a pending entry's songs in the master playlist
+// or, for an entry already in it, re-reads the playlist and follows any swapped songs.
+// delete and restore need the editToken that
 // submitPlaylist handed out (the submitting browser keeps it in localStorage) or the admin key.
 // Delete/restore keep the master playlist in sync, without touching songs that another
 // active entry also contributed.
@@ -59,7 +61,16 @@ export const handler: Schema['manageEntry']['functionHandler'] = async (event) =
       return publicFields(result.Attributes as EntryItem);
     }
     case 'sync': {
-      if (current.syncedAt || current.deletedAt) return publicFields(current);
+      if (current.deletedAt) return publicFields(current);
+      if (current.syncedAt) {
+        const others = urisHeldByOthers(await scanActiveEntries(ddb, tableName), current);
+        const result = await refreshEntry(ddb, tableName, await refreshSpotifyToken(), current, others);
+        if (result.status === 'changed') {
+          return publicFields({ ...current, trackCount: result.trackCount, syncedAt: result.syncedAt, syncError: undefined });
+        }
+        if (result.status === 'rejected') return publicFields({ ...current, syncError: result.syncError });
+        return publicFields(result.status === 'unchanged' ? { ...current, syncError: undefined } : current);
+      }
       const result = await syncEntry(ddb, tableName, await refreshSpotifyToken(), current);
       if (result.status === 'synced') {
         return publicFields({ ...current, trackCount: result.trackCount, syncedAt: result.syncedAt, syncError: undefined });
@@ -132,21 +143,7 @@ async function update(tableName: string, id: string, expression: string, values:
 async function urisNotHeldByOthers(tableName: string, entry: EntryItem): Promise<string[]> {
   const own = entry.trackUris ?? [];
   if (own.length === 0) return [];
-  const held = new Set<string>();
-  let startKey: Record<string, unknown> | undefined;
-  do {
-    const page = await ddb.send(
-      new ScanCommand({
-        TableName: tableName,
-        FilterExpression: 'attribute_not_exists(deletedAt) AND id <> :id',
-        ExpressionAttributeValues: { ':id': entry.id },
-        ProjectionExpression: 'trackUris',
-        ExclusiveStartKey: startKey,
-      }),
-    );
-    for (const item of page.Items ?? []) for (const uri of (item.trackUris as string[] | undefined) ?? []) held.add(uri);
-    startKey = page.LastEvaluatedKey;
-  } while (startKey);
+  const held = urisHeldByOthers(await scanActiveEntries(ddb, tableName), entry);
   return own.filter((uri) => !held.has(uri));
 }
 

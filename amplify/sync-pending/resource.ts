@@ -1,12 +1,13 @@
 import { defineFunction, secret } from '@aws-amplify/backend';
 
-// Every few minutes, retries entries whose songs are not in the master playlist yet, which
-// is the case until the owner's collaborator invite has been accepted.
+// Every few minutes: retries entries whose songs are not in the master playlist yet (the case
+// until the owner's collaborator invite has been accepted) and re-reads synced entries so
+// songs swapped in their playlist are followed in the master playlist.
 export const syncPending = defineFunction({
   name: 'sync-pending',
   entry: './handler.ts',
   runtime: 22,
-  timeoutSeconds: 120,
+  timeoutSeconds: 300,
   schedule: 'every 10m',
   resourceGroupName: 'data',
   environment: {

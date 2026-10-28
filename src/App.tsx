@@ -11,9 +11,11 @@ type EntryCard = {
   playlistId: string;
   trackCount: number;
   addedAt: string;
-  // Null until the songs are in the Master Mix (we could not read the playlist yet).
+  // Null until the songs are in the Master Mix (we could not read the playlist yet). After
+  // that, when the songs were last changed in the Master Mix.
   syncedAt: string | null;
-  // Why the playlist was refused last time we read it, if it was.
+  // Why the playlist was refused last time we read it, if it was. On a card already in the
+  // mix it means changes to the playlist are on hold until it passes again.
   syncError: string | null;
   deletedAt: string | null;
   claimed: boolean;
@@ -386,6 +388,52 @@ function PendingNote({
   );
 }
 
+// Shown on a card already in the Master Mix: re-read the playlist now instead of waiting for
+// the next scheduled check, so swapped songs show up straight away.
+function RefreshSongs({
+  entry,
+  onChanged,
+}: {
+  entry: EntryCard;
+  onChanged: (updated: EntryCard) => void;
+}) {
+  const [checking, setChecking] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function check() {
+    setChecking(true);
+    setMessage(null);
+    try {
+      const updated = await manage(entry, "sync");
+      onChanged(updated);
+      if (updated.syncError) setMessage(null);
+      else if (updated.syncedAt !== entry.syncedAt)
+        setMessage("Updated. The Master Mix now matches your playlist.");
+      else setMessage("No changes since the last check.");
+    } catch (err: unknown) {
+      setMessage(
+        err instanceof Error ? err.message : "Could not check. Try again.",
+      );
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="link"
+        onClick={check}
+        disabled={checking}
+      >
+        {checking ? "Checking…" : "Changed your songs?"}
+      </button>
+      {message && <p className="meta refresh-note">{message}</p>}
+    </>
+  );
+}
+
 function EntryHeader({
   entry,
   onChanged,
@@ -521,7 +569,15 @@ function EntryHeader({
             This is my playlist
           </button>
         )}
+        {inMix(entry) && <RefreshSongs entry={entry} onChanged={onChanged} />}
       </div>
+      {inMix(entry) && entry.syncError && (
+        <div className="pending">
+          <p>
+            <strong>Changes on hold.</strong> {entry.syncError}
+          </p>
+        </div>
+      )}
       {!inMix(entry) && <PendingNote entry={entry} onChanged={onChanged} />}
     </div>
   );

@@ -569,9 +569,14 @@ button.danger:hover:not(:disabled) {
 /* Always rendered (possibly empty) so every card header is the same height. */
 .owner-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 14px;
   min-height: 20px;
   margin-top: 4px;
+}
+.owner-actions .refresh-note {
+  flex-basis: 100%;
+  margin: 0;
 }
 .owner-actions .link {
   padding: 0;
