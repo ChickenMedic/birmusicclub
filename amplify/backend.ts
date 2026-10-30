@@ -6,6 +6,7 @@ import { data } from './data/resource';
 import { submitPlaylist } from './submit-playlist/resource';
 import { manageEntry } from './manage-entry/resource';
 import { syncPending } from './sync-pending/resource';
+import { siteStats } from './site-stats/resource';
 
 const backend = defineBackend({
   auth,
@@ -13,6 +14,7 @@ const backend = defineBackend({
   submitPlaylist,
   manageEntry,
   syncPending,
+  siteStats,
 });
 
 // Nobody signs in to this site. Cognito exists only so the identity pool can hand guests
@@ -42,8 +44,9 @@ const rateLimitTable = new Table(Stack.of(submitLambda), 'RateLimitTable', {
   billingMode: BillingMode.PAY_PER_REQUEST,
   timeToLiveAttribute: 'expiresAt',
 });
-// It also holds when a Spotify back-off ends, which every Lambda that calls Spotify checks.
-for (const fn of [backend.submitPlaylist, backend.manageEntry, backend.syncPending]) {
+// It also holds when a Spotify back-off ends, which every Lambda that calls Spotify checks,
+// and the site's visit counter.
+for (const fn of [backend.submitPlaylist, backend.manageEntry, backend.syncPending, backend.siteStats]) {
   rateLimitTable.grantReadWriteData(fn.resources.lambda);
   fn.addEnvironment('RATE_LIMIT_TABLE_NAME', rateLimitTable.tableName);
 }

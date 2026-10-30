@@ -55,11 +55,20 @@ a:hover {
   padding: 0 0 40px;
 }
 .stats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  column-gap: 18px;
+  row-gap: 4px;
   margin: 14px 0 0;
   min-height: 21px;
   color: var(--muted);
   font-size: 14px;
   font-weight: 500;
+}
+.stats span + span::before {
+  content: "·";
+  margin-right: 18px;
 }
 .embed-fallback {
   margin-top: 22px;

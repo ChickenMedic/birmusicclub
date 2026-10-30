@@ -1,6 +1,7 @@
 import { type ClientSchema, a, defineData } from '@aws-amplify/backend';
 import { submitPlaylist } from '../submit-playlist/resource';
 import { manageEntry } from '../manage-entry/resource';
+import { siteStats } from '../site-stats/resource';
 
 // Fields only the backend may read. "authenticated" users cannot exist (sign-up is disabled),
 // so this effectively hides the field from everyone using the API.
@@ -17,8 +18,11 @@ const schema = a.schema({
       email: a.email().authorization(backendOnly),
       // Secret handed to the submitting browser so it can delete/restore its own entry.
       editToken: a.string().authorization(backendOnly),
-      // Spotify URIs that were added to the master playlist, so delete/restore can sync it.
-      trackUris: a.string().array().authorization(backendOnly),
+      // Spotify URIs of the entry's songs, recorded when they went into the master playlist so
+      // delete/restore and the daily refresh can keep it in step. Public: the site uses them to
+      // count the songs picked by more than one person. They are no secret (the playlists are
+      // embedded on the page).
+      trackUris: a.string().array(),
       playlistUrl: a.url().required(),
       playlistId: a.string().required(),
       // 0 until the playlist has been read (see syncedAt).
@@ -51,7 +55,12 @@ const schema = a.schema({
     syncError: a.string(),
     deletedAt: a.string(),
     claimed: a.boolean(),
+    trackUris: a.string().array(),
     editToken: a.string(),
+  }),
+
+  SiteStats: a.customType({
+    visits: a.integer().required(),
   }),
 
   // The only way to create an entry. The Lambda rate limits by IP, saves the Entry, then tries
@@ -84,6 +93,19 @@ const schema = a.schema({
     .returns(a.ref('SubmittedEntry'))
     .authorization((allow) => [allow.guest()])
     .handler(a.handler.function(manageEntry)),
+
+  // The visit counter in the hero. recordVisit counts one visit and returns the total;
+  // siteStats only reads it (for reloads within the same tab session).
+  recordVisit: a
+    .mutation()
+    .returns(a.ref('SiteStats'))
+    .authorization((allow) => [allow.guest()])
+    .handler(a.handler.function(siteStats)),
+  siteStats: a
+    .query()
+    .returns(a.ref('SiteStats'))
+    .authorization((allow) => [allow.guest()])
+    .handler(a.handler.function(siteStats)),
 });
 
 export type Schema = ClientSchema<typeof schema>;

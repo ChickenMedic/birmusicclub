@@ -19,6 +19,9 @@ type EntryCard = {
   syncError: string | null;
   deletedAt: string | null;
   claimed: boolean;
+  // Spotify URIs of the songs in the Master Mix from this playlist. Null for entries that
+  // predate the song lists (the daily refresh records theirs the next time it runs).
+  trackUris: string[] | null;
 };
 
 type Action = "rename" | "delete" | "restore" | "claim" | "sync";
@@ -52,6 +55,19 @@ const loadEditToken = (id: string) => readStorage(editKey(id));
 const saveEditToken = (id: string, token: string) =>
   writeStorage(editKey(id), token);
 const loadAdminKey = () => readStorage(ADMIN_KEY);
+// Set once this tab has been counted as a visit, so reloads do not count again.
+const VISITED_KEY = "bir-visited";
+function visitedThisSession(): boolean {
+  try {
+    if (sessionStorage.getItem(VISITED_KEY)) return true;
+    sessionStorage.setItem(VISITED_KEY, "1");
+  } catch {
+    // storage blocked; count the visit anyway
+  }
+  return false;
+}
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+const countFormat = new Intl.NumberFormat("en-CA");
 // Entries from before syncedAt existed have a song count but no timestamp; they are in the mix.
 const inMix = (entry: EntryCard) =>
   entry.syncedAt !== null || entry.trackCount > 0;
@@ -77,6 +93,7 @@ function fromResult(data: {
   syncError?: string | null;
   deletedAt?: string | null;
   claimed?: boolean | null;
+  trackUris?: (string | null)[] | null;
 }): EntryCard {
   return {
     id: data.id,
@@ -88,7 +105,27 @@ function fromResult(data: {
     syncError: data.syncError ?? null,
     deletedAt: data.deletedAt ?? null,
     claimed: data.claimed ?? false,
+    trackUris: data.trackUris?.filter((uri): uri is string => !!uri) ?? null,
   };
+}
+
+// The hero numbers. Songs are counted once each, the way the Master Mix holds them; a song
+// picked by more than one person counts as one duplicate. Entries without a recorded song
+// list (from before lists existed) fall back to their song count.
+function songStats(entries: EntryCard[]): { songs: number; duplicates: number } {
+  const picks = new Map<string, number>();
+  let unlisted = 0;
+  for (const entry of entries) {
+    if (!inMix(entry)) continue;
+    if (!entry.trackUris) {
+      unlisted += entry.trackCount;
+      continue;
+    }
+    for (const uri of entry.trackUris) picks.set(uri, (picks.get(uri) ?? 0) + 1);
+  }
+  let duplicates = 0;
+  for (const n of picks.values()) if (n > 1) duplicates++;
+  return { songs: picks.size + unlisted, duplicates };
 }
 
 async function manage(
@@ -642,6 +679,19 @@ export default function App() {
   const [showAdd, setShowAdd] = useState(false);
 
   const [admin, setAdmin] = useState(() => loadAdminKey() !== null);
+  const [visits, setVisits] = useState<number | null>(null);
+
+  // Count this visit (once per tab session) and show the running total.
+  useEffect(() => {
+    const request = visitedThisSession()
+      ? client.queries.siteStats()
+      : client.mutations.recordVisit();
+    request
+      .then(({ data }) => {
+        if (data) setVisits(data.visits);
+      })
+      .catch((err: unknown) => console.error(err));
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -656,6 +706,7 @@ export default function App() {
           "syncError",
           "deletedAt",
           "claimed",
+          "trackUris",
         ],
         limit: 500,
       });
@@ -734,8 +785,7 @@ export default function App() {
   const active = entries ? gridOrder(entries.filter((e) => !e.deletedAt)) : null;
   const myDeleted =
     entries?.filter((e) => e.deletedAt && canManage(e.id)) ?? [];
-  const totalSongs =
-    active?.reduce((sum, e) => sum + (inMix(e) ? e.trackCount : 0), 0) ?? 0;
+  const { songs, duplicates } = songStats(active ?? []);
   const masterUrl = `https://open.spotify.com/playlist/${MASTER_PLAYLIST_ID}`;
 
   return (
@@ -759,9 +809,20 @@ export default function App() {
           Everyone picks {MAX_TRACKS} songs. They all land in one Master Mix.
         </p>
         <p className="stats">
-          {active && active.length > 0
-            ? `${active.length} playlist${active.length === 1 ? "" : "s"} · ${totalSongs} song${totalSongs === 1 ? "" : "s"} in the mix`
-            : " "}
+          {active && active.length > 0 && (
+            <>
+              <span>{plural(active.length, "playlist")}</span>
+              <span>{plural(songs, "song")} in the mix</span>
+              <span title="Songs picked by more than one person. The Master Mix has each of them once.">
+                {plural(duplicates, "duplicate song")}
+              </span>
+            </>
+          )}
+          {visits !== null && (
+            <span>
+              {countFormat.format(visits)} visit{visits === 1 ? "" : "s"}
+            </span>
+          )}
         </p>
       </header>
 

@@ -66,14 +66,14 @@ export const handler: Schema['manageEntry']['functionHandler'] = async (event) =
         const others = urisHeldByOthers(await scanActiveEntries(ddb, tableName), current);
         const result = await refreshEntry(ddb, tableName, await refreshSpotifyToken(), current, others);
         if (result.status === 'changed') {
-          return publicFields({ ...current, trackCount: result.trackCount, syncedAt: result.syncedAt, syncError: undefined });
+          return publicFields({ ...current, trackCount: result.trackCount, trackUris: result.trackUris, syncedAt: result.syncedAt, syncError: undefined });
         }
         if (result.status === 'rejected') return publicFields({ ...current, syncError: result.syncError });
         return publicFields(result.status === 'unchanged' ? { ...current, syncError: undefined } : current);
       }
       const result = await syncEntry(ddb, tableName, await refreshSpotifyToken(), current);
       if (result.status === 'synced') {
-        return publicFields({ ...current, trackCount: result.trackCount, syncedAt: result.syncedAt, syncError: undefined });
+        return publicFields({ ...current, trackCount: result.trackCount, trackUris: result.trackUris, syncedAt: result.syncedAt, syncError: undefined });
       }
       return publicFields({ ...current, syncError: result.status === 'rejected' ? result.syncError : undefined });
     }
@@ -159,5 +159,6 @@ function publicFields(item: EntryItem) {
     syncError: item.syncError ?? null,
     deletedAt: item.deletedAt ?? null,
     claimed: item.claimed ?? false,
+    trackUris: item.trackUris ?? null,
   };
 }

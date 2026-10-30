@@ -71,6 +71,7 @@ export const handler: Schema['submitPlaylist']['functionHandler'] = async (event
   return {
     ...entry,
     trackCount: result.status === 'synced' ? result.trackCount : 0,
+    trackUris: result.status === 'synced' ? result.trackUris : [],
     syncedAt: result.status === 'synced' ? result.syncedAt : null,
     syncError: result.status === 'rejected' ? result.syncError : null,
     claimed: true,
