@@ -15,7 +15,10 @@ export const handler: Schema['recordVisit']['functionHandler'] = async (event) =
   const tableName = process.env.RATE_LIMIT_TABLE_NAME;
   if (!tableName) throw new Error('Server misconfiguration: RATE_LIMIT_TABLE_NAME is not set.');
 
-  if (event.info.fieldName === 'recordVisit') {
+  // Amplify's custom-operation resolver puts the field name at the top level of the event;
+  // a direct AppSync invocation puts it under info.
+  const fieldName = (event as { fieldName?: string }).fieldName ?? event.info?.fieldName;
+  if (fieldName === 'recordVisit') {
     const result = await ddb.send(
       new UpdateCommand({
         TableName: tableName,
